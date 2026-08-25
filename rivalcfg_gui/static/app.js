@@ -86,10 +86,11 @@ const fault = (error) => toast(error.message, "error", error.hint || "");
 
 /* ---- writing --------------------------------------------------------- */
 const timers = new Map();
+const queues = new Map();
 
 function write(name, value, instant = false) {
   clearTimeout(timers.get(name));
-  const send = async () => {
+  const post = async () => {
     try {
       values = (await api("/api/settings", { name, value })).values;
       flash(name);
@@ -98,6 +99,12 @@ function write(name, value, instant = false) {
       fault(error);
       return false;
     }
+  };
+  // one write per setting at a time, so quick clicks can't land out of order
+  const send = () => {
+    const next = (queues.get(name) || Promise.resolve()).then(post, post);
+    queues.set(name, next);
+    return next;
   };
   if (instant) return send();
   timers.set(name, setTimeout(send, 200));
@@ -209,22 +216,19 @@ function buildSlider(field, id) {
   return [range, num];
 }
 
-function buildColor(field, id) {
-  const start = values[field.name] ?? field.default;
-  const hexValue = toHex(start) || "#ffffff";
-  const swatch = el("input", { type: "color", className: "swatch", id, value: hexValue });
+function colorPair(value, onPick, label) {
+  const swatch = el("input", { type: "color", className: "swatch", value });
   const hex = el("input", {
     type: "text",
     className: "field hex",
-    value: hexValue,
+    value,
     maxLength: 7,
     spellcheck: false,
-    "aria-label": field.label + " hex value",
+    "aria-label": label,
   });
-
   swatch.oninput = () => {
     hex.value = swatch.value;
-    write(field.name, swatch.value);
+    onPick(swatch.value, false);
   };
   hex.onchange = () => {
     const parsed = toHex(hex.value);
@@ -234,10 +238,19 @@ function buildColor(field, id) {
       return;
     }
     swatch.value = hex.value = parsed;
-    write(field.name, parsed, true);
+    onPick(parsed, true);
   };
+  return { swatch, hex, nodes: [swatch, hex], enable: (on) => (swatch.disabled = hex.disabled = !on) };
+}
 
-  if (!field.nullable) return [swatch, hex];
+function buildColor(field, id) {
+  const start = values[field.name] ?? field.default;
+  const pair = colorPair(toHex(start) || "#ffffff", (value, instant) =>
+    write(field.name, value, instant)
+  );
+  pair.swatch.id = id;
+  pair.hex.setAttribute("aria-label", field.label + " hex value");
+  if (!field.nullable) return pair.nodes;
 
   const lit = String(start).toLowerCase() !== "off";
   const toggle = el("input", {
@@ -246,15 +259,175 @@ function buildColor(field, id) {
     checked: lit,
     "aria-label": "Enable " + field.label.toLowerCase(),
   });
-  const enable = (on) => {
-    swatch.disabled = hex.disabled = !on;
-  };
   toggle.onchange = () => {
-    enable(toggle.checked);
-    write(field.name, toggle.checked ? swatch.value : "off", true);
+    pair.enable(toggle.checked);
+    write(field.name, toggle.checked ? pair.swatch.value : "off", true);
   };
-  enable(lit);
-  return [toggle, swatch, hex];
+  pair.enable(lit);
+  return [toggle, ...pair.nodes];
+}
+
+// These settings take a plain colour or a looping gradient, so the mode switch
+// picks which, and the preview sweep shows the cycle you've dialled in.
+function buildGradient(field, id) {
+  const start = values[field.name] ?? field.default ?? {};
+  const seed = field.default?.stops?.length ? field.default.stops : [{ pos: 0, color: "#ffffff" }];
+  let mode = start.mode === "gradient" ? "gradient" : "solid";
+  let duration = start.duration || 1000;
+  let solid = start.color || "#ffffff";
+  let stops = (start.stops?.length ? start.stops : seed).map((stop) => ({ ...stop }));
+
+  // rivalcfg walks the stops as deltas, so they have to climb
+  const ordered = () => [...stops].sort((a, b) => a.pos - b.pos);
+  const send = () =>
+    write(field.name, mode === "solid" ? solid : { duration, colors: ordered() }, true);
+
+  const preview = el("div", { className: "grad__preview" });
+  const sweep = el("span", { className: "grad__sweep" });
+  const rows = el("div", { className: "grad__stops" });
+  const timing = el("div", { className: "grad__timing" });
+  const pane = el("div", { className: "grad__pane" }, preview, rows, timing);
+
+  function paint() {
+    const sorted = ordered();
+    const ramp = sorted.map((stop) => `${stop.color} ${stop.pos}%`).join(", ");
+    preview.style.setProperty("--ramp", sorted.length > 1 ? ramp : `${ramp}, ${ramp}`);
+    preview.style.setProperty("--cycle", duration + "ms");
+    preview.replaceChildren(
+      ...sorted.map((stop) => {
+        const pin = el("span", { className: "grad__pin" });
+        pin.style.setProperty("--at", stop.pos + "%");
+        return pin;
+      }),
+      sweep
+    );
+  }
+
+  function drawStops() {
+    rows.replaceChildren(
+      ...stops.map((stop, index) => {
+        const pair = colorPair(stop.color, (value) => {
+          stop.color = value;
+          paint();
+          send();
+        }, `Colour ${index + 1}`);
+        const pos = el("input", {
+          type: "number",
+          className: "field num grad__pos",
+          value: stop.pos,
+          min: 0,
+          max: 100,
+          step: 1,
+          "aria-label": `Colour ${index + 1} position, percent`,
+        });
+        pos.onchange = () => {
+          stop.pos = Math.min(100, Math.max(0, Number(pos.value) || 0));
+          stops = ordered();
+          drawStops();
+          paint();
+          send();
+        };
+        const drop = el(
+          "button",
+          {
+            type: "button",
+            className: "btn btn--icon",
+            disabled: stops.length <= 2,
+            "aria-label": `Remove colour ${index + 1}`,
+          },
+          icon("close")
+        );
+        drop.onclick = () => {
+          stops.splice(index, 1);
+          drawStops();
+          paint();
+          send();
+        };
+        return el("div", { className: "grad__stop" }, ...pair.nodes, pos, el("span", { className: "grad__pct" }, "%"), drop);
+      }),
+      stops.length < field.max_stops &&
+        (() => {
+          const add = el(
+            "button",
+            { type: "button", className: "btn btn--ghost grad__add" },
+            icon("plus"),
+            el("span", {}, "Add colour")
+          );
+          add.onclick = () => {
+            const sorted = ordered();
+            const last = sorted[sorted.length - 1];
+            const prev = sorted[sorted.length - 2] || { pos: 0 };
+            const at = last.pos < 100 ? (last.pos + 100) / 2 : (prev.pos + last.pos) / 2;
+            stops = [...sorted, { pos: Math.round(at), color: last.color }];
+            drawStops();
+            paint();
+            send();
+          };
+          return add;
+        })()
+    );
+  }
+
+  const axis = { min: field.min, max: field.max, step: field.step };
+  const speed = el("input", { type: "range", className: "range", value: duration, ...axis });
+  const speedNum = el("input", {
+    type: "number",
+    className: "field num",
+    value: duration,
+    ...axis,
+    "aria-label": "Cycle time in milliseconds",
+  });
+  const commitSpeed = (value, instant) => {
+    duration = clamp(value, field);
+    speed.value = speedNum.value = duration;
+    paint();
+    if (instant) send();
+  };
+  speed.oninput = () => commitSpeed(speed.value, false);
+  speed.onchange = () => commitSpeed(speed.value, true);
+  speedNum.onchange = () => commitSpeed(speedNum.value, true);
+  timing.append(el("span", { className: "grad__label" }, "Cycle time"), speed, speedNum, el("span", { className: "grad__pct" }, "ms"));
+
+  const solidPair = colorPair(solid, (value, instant) => {
+    solid = value;
+    if (instant || mode === "solid") send();
+  }, field.label + " hex value");
+  solidPair.swatch.id = id;
+  const solidPane = el("div", { className: "grad__solid" }, ...solidPair.nodes);
+
+  const modes = el("div", { className: "seg", role: "radiogroup", "aria-label": field.label + " mode" });
+  for (const name of ["solid", "gradient"]) {
+    const choice = el("input", {
+      type: "radio",
+      className: "seg__input",
+      name: id + "-mode",
+      id: id + "-" + name,
+      checked: name === mode,
+    });
+    choice.onchange = () => {
+      mode = name;
+      if (mode === "gradient" && stops.length < 2) {
+        stops = seed.length > 1 ? seed.map((stop) => ({ ...stop })) : [
+          { pos: 0, color: solid },
+          { pos: 100, color: solid },
+        ];
+        drawStops();
+      }
+      sync();
+      send();
+    };
+    modes.append(choice, el("label", { className: "seg__label", htmlFor: id + "-" + name }, humanise(name)));
+  }
+
+  function sync() {
+    solidPane.hidden = mode !== "solid";
+    pane.hidden = mode === "solid";
+  }
+
+  drawStops();
+  paint();
+  sync();
+  return el("div", { className: "grad" }, modes, solidPane, pane);
 }
 
 function buildDpi(field, id) {
@@ -401,6 +574,7 @@ function buildText(field, id) {
 
 const CONTROLS = {
   select: buildSelect,
+  gradient: buildGradient,
   slider: buildSlider,
   color: buildColor,
   dpi: buildDpi,
@@ -412,7 +586,7 @@ const CONTROLS = {
 /* ---- rendering ------------------------------------------------------- */
 function buildRow(field) {
   const id = "f-" + field.name;
-  const stacked = field.control === "dpi" || field.control === "buttons";
+  const stacked = ["dpi", "buttons", "gradient"].includes(field.control);
   const labelled = ["select", "slider", "color", "text"].includes(field.control);
   const control = el("div", { className: "row__control" }, (CONTROLS[field.control] || buildText)(field, id));
 
@@ -502,7 +676,8 @@ function applyStatus(status) {
   const [, full = "", mode] = /^(.*?)\s*(?:\((.*)\))?$/s.exec(status.name || "") || [];
   $("deviceName").textContent = online ? full.replace(/^SteelSeries\s+/i, "") : headline(status.kind);
   $("deviceName").title = status.name || "";
-  $("deviceMeta").textContent = online ? [mode, status.id].filter(Boolean).join(" · ") : "Not connected";
+  const facts = [mode, status.id, status.firmware && "fw " + status.firmware];
+  $("deviceMeta").textContent = online ? facts.filter(Boolean).join(" · ") : "Not connected";
   showBattery(status.battery);
   $("save").disabled = $("reset").disabled = !online;
 
