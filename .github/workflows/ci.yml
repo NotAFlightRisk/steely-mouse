@@ -1,0 +1,272 @@
+name: 🚦 CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  # Work out what kind of files changed, so unrelated jobs can sit this one out.
+  changes:
+    name: 🔍 Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      docker: ${{ steps.filter.outputs.docker }}
+      nix: ${{ steps.filter.outputs.nix }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - 'pyproject.toml'
+              - 'rivalcfg-gui.spec'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'rivalcfg_gui/**'
+              - 'pyproject.toml'
+            nix:
+              - 'flake.*'
+              - 'rivalcfg_gui/**'
+              - 'pyproject.toml'
+            workflows:
+              - '.github/workflows/**'
+
+  lint:
+    name: 🧼 Lint
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff
+        run: ruff check --output-format github .
+
+  format:
+    name: 🎨 Format
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install ruff
+        run: pip install ruff
+      - name: Check formatting
+        run: ruff format --check --diff .
+
+  # The floor is 3.10, so every version from there up has to stay green.
+  test:
+    name: ${{ matrix.emoji }} Python ${{ matrix.python }}
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { python: '3.10', emoji: '🌱' }
+          - { python: '3.11', emoji: '🌿' }
+          - { python: '3.12', emoji: '🌳' }
+          - { python: '3.13', emoji: '🎋' }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install hidapi headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhidapi-dev libudev-dev
+      - name: Install the package
+        run: pip install -e . pytest
+      - name: Run tests
+        run: pytest -q
+
+  package:
+    name: 📦 Package
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build the sdist and wheel
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+      - name: Install the wheel on its own
+        run: |
+          python -m venv /tmp/check
+          /tmp/check/bin/pip install dist/*.whl
+          /tmp/check/bin/rivalcfg-gui --version
+
+  # The release ships frozen binaries, so catch PyInstaller breakage on the PR.
+  binary:
+    name: 🧊 Frozen Binary
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install hidapi headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhidapi-dev libudev-dev
+      - name: Build it
+        run: |
+          pip install . pyinstaller
+          pyinstaller --clean --noconfirm rivalcfg-gui.spec
+      - name: Check it serves
+        run: |
+          ./dist/rivalcfg-gui --version
+          ./dist/rivalcfg-gui --port 8777 --no-browser --demo &
+          for _ in $(seq 1 25); do
+            if curl -fs http://127.0.0.1:8777/api/status | grep -q '"connected":true'; then
+              kill %1
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the frozen binary never served a mouse"
+          kill %1
+          exit 1
+
+  nix:
+    name: ❄️ Nix
+    needs: changes
+    if: needs.changes.outputs.nix == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+      - name: Build the flake
+        run: nix build --print-build-logs
+      - name: Run the built binary
+        run: ./result/bin/rivalcfg-gui --version
+
+  # Build the image and prove it actually serves, rather than just starts.
+  docker:
+    name: 🐳 Docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: rivalcfg-gui:ci
+          provenance: false
+      - name: Smoke test
+        run: |
+          docker run -d --name gui-ci -p 8777:8777 rivalcfg-gui:ci --demo
+          for i in $(seq 1 25); do
+            if curl -fs http://localhost:8777/api/status | grep -q '"connected":true'; then
+              echo "serving a fake mouse after ${i}s"
+              docker rm -f gui-ci >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the container never reported a mouse"
+          docker logs gui-ci
+          docker rm -f gui-ci >/dev/null
+          exit 1
+
+  actions:
+    name: 🤖 Workflow Lint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run actionlint
+        run: |
+          bash <(curl --proto '=https' --tlsv1.2 -sSf \
+            https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pipx install zizmor
+          zizmor --persona=regular .github/workflows
+
+  secrets:
+    name: 🔑 Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

@@ -1,0 +1,145 @@
+"""Talks to the mouse through rivalcfg."""
+
+import logging
+import threading
+from contextlib import contextmanager, suppress
+
+import rivalcfg
+
+from .errors import AppError, absent, translate
+from .schema import describe_profile, parse_dpi
+
+log = logging.getLogger(__name__)
+
+
+class Device:
+    """Owns the HID connection.
+
+    rivalcfg's Mouse wraps an open hidapi handle that isn't thread safe, and the
+    mouse leaves the bus whenever it sleeps or switches between wired and
+    wireless (the product id flips between 0x183a and 0x1838). So we connect
+    lazily behind a lock and drop the handle the moment anything fails, which
+    makes the next request re-detect instead of talking to a dead device.
+    """
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._mouse = None
+
+    def _connect(self):
+        if self._mouse is None:
+            try:
+                mouse = rivalcfg.get_first_mouse()
+            except Exception as error:
+                raise translate(error) from error
+            if mouse is None:
+                raise absent()
+            log.info("connected to %s", mouse.name)
+            self._mouse = mouse
+        return self._mouse
+
+    def forget(self):
+        """Drop the handle so the next call re-detects."""
+        mouse, self._mouse = self._mouse, None
+        if mouse is None:
+            return
+        log.debug("dropping the handle on %s", mouse.name)
+        with suppress(Exception):
+            mouse.close()
+
+    @contextmanager
+    def _session(self):
+        with self._lock:
+            try:
+                yield self._connect()
+            except (AppError, ValueError, TypeError, KeyError):
+                # bad input, so the value is wrong but the connection is fine
+                raise
+            except Exception as error:
+                self.forget()
+                raise translate(error) from error
+
+    def status(self):
+        """Connection, identity and battery. Never raises, the UI polls it."""
+        with self._lock:
+            try:
+                mouse = self._connect()
+                battery = mouse.battery
+            except AppError as error:
+                return dict(error.as_dict(), connected=False)
+            except Exception as error:
+                self.forget()
+                return dict(translate(error).as_dict(), connected=False)
+            return {
+                "connected": True,
+                "name": mouse.name,
+                "id": "%04x:%04x" % (mouse.vendor_id, mouse.product_id),
+                "firmware": self._firmware(mouse),
+                "battery": battery,
+            }
+
+    @staticmethod
+    def _firmware(mouse):
+        # Not every profile implements the firmware command, and a sleeping
+        # mouse won't answer it. It's decoration, so never let it break status.
+        try:
+            return mouse.firmware_version
+        except Exception:
+            return None
+
+    def schema(self):
+        """The settings this mouse supports, with whatever is currently set."""
+        with self._session() as mouse:
+            return {
+                "fields": describe_profile(mouse.mouse_profile),
+                "values": self._values(mouse),
+            }
+
+    @staticmethod
+    def _values(mouse):
+        values = {}
+        for name, info in mouse.mouse_profile["settings"].items():
+            if info.get("value_type") == "none":
+                continue
+            try:
+                stored = mouse.mouse_settings.get(name)
+            except KeyError:
+                continue
+            if str(info.get("value_type", "")).startswith("multidpi"):
+                stored = parse_dpi(stored)
+            values[name] = stored
+        return values
+
+    def apply(self, name, value):
+        """Write one setting to the mouse."""
+        with self._session() as mouse:
+            settings = mouse.mouse_profile["settings"]
+            if name not in settings:
+                raise ValueError("This mouse has no %r setting." % name)
+
+            log.debug("set %s to %r", name, value)
+            write = getattr(mouse, "set_%s" % name)
+            if settings[name].get("value_type") == "none":
+                write()
+            elif isinstance(value, dict):
+                # DPI presets carry the active stage alongside the values
+                write(value.get("presets") or [], value.get("active") or 0)
+            else:
+                write(value)
+
+            mouse.mouse_settings.save()
+            return self._values(mouse)
+
+    def persist(self):
+        """Commit the current config to the mouse's onboard memory."""
+        with self._session() as mouse:
+            log.info("saving to onboard memory")
+            mouse.save()
+
+    def reset(self):
+        """Put every setting back to its factory default."""
+        with self._session() as mouse:
+            log.info("resetting to factory defaults")
+            mouse.reset_settings()
+            mouse.mouse_settings.save()
+            return self._values(mouse)

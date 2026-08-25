@@ -1,0 +1,277 @@
+# Builds and publishes the multi-arch image.
+#
+# Tag pushes publish :X.Y.Z, :X.Y and :latest. The weekly cron rebuilds :latest
+# so base image patches land without a release. Docker Hub is only used if the
+# credentials are configured, GHCR always is.
+name: 🐋 Docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to build (blank = current ref as :latest)'
+        required: false
+        type: string
+  push:
+    tags: ['*.*.*']
+  schedule:
+    - cron: '0 4 * * 0'
+
+concurrency:
+  group: docker-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: 🧭 Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.plan.outputs.image }}
+      version: ${{ steps.plan.outputs.version }}
+      created: ${{ steps.plan.outputs.created }}
+    steps:
+      - name: Resolve the image name and version
+        id: plan
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          if [ -n "$INPUT_TAG" ]; then
+            VERSION="$INPUT_TAG"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.emoji }} Build ${{ matrix.arch }}
+    needs: prepare
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    env:
+      DOCKER_BUILD_SUMMARY: 'false'
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, platform: linux/amd64, runner: ubuntu-latest, emoji: '💻' }
+          - { arch: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm, emoji: '🦾' }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+          load: true
+          tags: rivalcfg-gui-scan:${{ matrix.arch }}
+          provenance: false
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ needs.prepare.outputs.created }}
+
+      - name: Scan for vulnerabilities
+        id: scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          image-ref: rivalcfg-gui-scan:${{ matrix.arch }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: ${{ github.event_name == 'schedule' && '1' || '0' }}
+          vuln-type: os,library
+          format: sarif
+          output: trivy-${{ matrix.arch }}.sarif
+          timeout: 10m
+
+      - name: Upload the scan results
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.arch)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4.37.3
+        with:
+          sarif_file: trivy-${{ matrix.arch }}.sarif
+          category: trivy-${{ matrix.arch }}
+
+      - name: Push by digest
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          outputs: type=image,name=${{ needs.prepare.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+          provenance: false
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ needs.prepare.outputs.created }}
+
+      - name: Save the digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          echo "$DIGEST" > "${RUNNER_TEMP}/digests/$ARCH"
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: 🧩 Merge Manifests
+    needs: [prepare, build]
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ${{ needs.prepare.outputs.image }}
+      HAS_HUB: ${{ vars.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+      IS_TAGGED: ${{ github.event_name == 'push' || inputs.tag != '' }}
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: env.HAS_HUB == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Work out the tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.IMAGE }}
+            ${{ env.HAS_HUB == 'true' && format('{0}/rivalcfg-gui', vars.DOCKER_USERNAME) || '' }}
+          tags: |
+            type=raw,value=latest,enable=${{ inputs.tag == '' }}
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }},enable=${{ env.IS_TAGGED }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ env.IS_TAGGED }}
+          flavor: latest=false
+
+      - name: Create and push the manifest
+        id: manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          set -euo pipefail
+          TAGS=()
+          while IFS= read -r tag; do TAGS+=(-t "$tag"); done \
+            < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          SOURCES=()
+          for file in *; do SOURCES+=("${IMAGE}@$(cat "$file")"); done
+          docker buildx imagetools create "${TAGS[@]}" "${SOURCES[@]}"
+          PRIMARY=$(jq -r --arg img "$IMAGE" \
+            '[.tags[] | select(startswith($img + ":"))] | first' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          echo "primary=$PRIMARY" >> "$GITHUB_OUTPUT"
+          echo "digest=$(docker buildx imagetools inspect "$PRIMARY" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Generate an SBOM
+        id: sbom
+        continue-on-error: true
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ steps.manifest.outputs.primary }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+
+      - name: Attest the SBOM
+        id: attest_sbom
+        if: steps.sbom.outcome == 'success'
+        continue-on-error: true
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
+          show-summary: false
+
+      - name: Attest the build provenance
+        id: attest_prov
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+          show-summary: false
+
+      - name: Job summary
+        if: always()
+        env:
+          TAGS_JSON: ${{ steps.meta.outputs.json }}
+          MANIFEST: ${{ steps.manifest.outputs.digest }}
+          SBOM_URL: ${{ steps.attest_sbom.outputs.attestation-url }}
+          PROV_URL: ${{ steps.attest_prov.outputs.attestation-url }}
+        run: |
+          {
+            echo "## Docker"
+            echo ""
+            echo "**Manifest:** \`${MANIFEST:-none}\`"
+            echo ""
+            echo "Published tags:"
+            echo '```'
+            jq -r '.tags[]?' <<< "${TAGS_JSON:-{\}}"
+            echo '```'
+            [ "$HAS_HUB" = "true" ] || echo "> Docker Hub is not configured, so this went to GHCR only."
+            [ -n "$SBOM_URL" ] && echo "- ✅ SBOM attested ([view]($SBOM_URL))"
+            [ -n "$PROV_URL" ] && echo "- ✅ Provenance attested ([view]($PROV_URL))"
+            true
+          } >> "$GITHUB_STEP_SUMMARY"

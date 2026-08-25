@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rivalcfg-gui"
+dynamic = ["version"]
+description = "A web GUI for configuring SteelSeries mice, built on rivalcfg"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["flask>=3.0", "rivalcfg>=4.15"]
+
+[project.scripts]
+rivalcfg-gui = "rivalcfg_gui.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Lissy93/rivalcfg-gui"
+
+[tool.setuptools]
+packages = ["rivalcfg_gui"]
+
+[tool.setuptools.dynamic]
+version = { attr = "rivalcfg_gui.__version__" }
+
+[tool.setuptools.package-data]
+rivalcfg_gui = ["static/*", "templates/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["rivalcfg"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = ["UP031"]

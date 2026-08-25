@@ -1,0 +1,7 @@
+# Actions are pinned to release tags rather than commit hashes, to match the
+# rest of the repos here and keep the workflows readable.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": ref-pin
