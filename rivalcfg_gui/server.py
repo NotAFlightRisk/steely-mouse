@@ -1,0 +1,118 @@
+"""Flask app: serves the UI and a small JSON API over loopback."""
+
+import secrets
+from http import HTTPStatus
+from urllib.parse import urlsplit
+
+from flask import Flask, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
+
+from . import __version__
+from .device import Device
+from .errors import AppError
+
+LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+CSP = (
+    "default-src 'self'; img-src 'self' data:; base-uri 'none'; "
+    "form-action 'none'; frame-ancestors 'none'"
+)
+
+
+def hostname(value):
+    """Pull the host out of a Host or Origin header, IPv6 brackets included."""
+    prefixed = value if "//" in value else "//" + value
+    return (urlsplit(prefixed).hostname or "").lower()
+
+
+def fail(message, code, kind="request", hint=""):
+    body = {"error": message, "kind": kind}
+    return jsonify(dict(body, hint=hint) if hint else body), code
+
+
+def create_app(device=None):
+    app = Flask(__name__)
+    app.config.update(TOKEN=secrets.token_urlsafe(32), SEND_FILE_MAX_AGE_DEFAULT=0)
+    mouse = device or Device()
+
+    @app.before_request
+    def guard():
+        # This API reconfigures hardware, so it stays strictly local: the Host
+        # check stops DNS rebinding, Origin and the token stop cross-site posts.
+        if hostname(request.host) not in LOOPBACK:
+            return fail("Only loopback requests are allowed.", HTTPStatus.FORBIDDEN)
+        origin = request.headers.get("Origin")
+        if origin and hostname(origin) not in LOOPBACK:
+            return fail("Cross-origin requests are blocked.", HTTPStatus.FORBIDDEN)
+        if request.method == "POST" and not secrets.compare_digest(
+            request.headers.get("X-Token", ""), app.config["TOKEN"]
+        ):
+            return fail(
+                "Missing or invalid token.",
+                HTTPStatus.FORBIDDEN,
+                hint="Reload the page to pick up a fresh one.",
+            )
+
+    @app.after_request
+    def headers(response):
+        response.headers.update(
+            {
+                "Content-Security-Policy": CSP,
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
+            }
+        )
+        return response
+
+    @app.errorhandler(AppError)
+    def device_trouble(error):
+        app.logger.warning(error.log_line())
+        return jsonify(error.as_dict()), error.status
+
+    @app.errorhandler(HTTPException)
+    def http_problem(error):
+        return fail(error.description, error.code)
+
+    @app.errorhandler(Exception)
+    def crash(error):
+        app.logger.error("unhandled %s: %s", type(error).__name__, error, exc_info=True)
+        return fail(
+            "Something broke inside rivalcfg-gui.",
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            kind="bug",
+            hint="Re-run with --log-level debug for the traceback.",
+        )
+
+    @app.get("/")
+    def index():
+        return render_template("index.html", token=app.config["TOKEN"], version=__version__)
+
+    @app.get("/api/status")
+    def status():
+        return jsonify(mouse.status())
+
+    @app.get("/api/schema")
+    def schema():
+        return jsonify(mouse.schema())
+
+    @app.post("/api/settings")
+    def write():
+        body = request.get_json(silent=True) or {}
+        name = body.get("name")
+        if not isinstance(name, str):
+            return fail("A setting name is required.", HTTPStatus.BAD_REQUEST)
+        try:
+            return jsonify({"values": mouse.apply(name, body.get("value"))})
+        except (ValueError, TypeError, KeyError) as error:
+            return fail(str(error), HTTPStatus.BAD_REQUEST, kind="invalid")
+
+    @app.post("/api/save")
+    def save():
+        mouse.persist()
+        return jsonify({"ok": True})
+
+    @app.post("/api/reset")
+    def reset():
+        return jsonify({"values": mouse.reset()})
+
+    return app

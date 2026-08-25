@@ -1,0 +1,224 @@
+# Builds standalone binaries for every supported platform and drafts a GitHub
+# release with them, the Python distributions, checksums and a provenance
+# attestation.
+#
+# Fires on x.y.0 tags, which is what a release means here. Dispatch it by hand
+# to redo a release for any existing tag.
+name: 🚀 Release
+
+on:
+  push:
+    tags: ['*.*.0']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to release (e.g. 1.2.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  # One self-contained executable per platform, each smoke-tested on its own runner.
+  binaries:
+    name: ${{ matrix.emoji }} Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x86_64, emoji: '🐧' }
+          - { os: ubuntu-24.04-arm, target: linux-aarch64, emoji: '🦾' }
+          - { os: macos-15-intel, target: macos-x86_64, emoji: '🍎' }
+          - { os: macos-latest, target: macos-arm64, emoji: '🍏' }
+          - { os: windows-latest, target: windows-x86_64, emoji: '🪟', ext: '.exe' }
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install hidapi headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhidapi-dev libudev-dev
+
+      - name: Install the package and PyInstaller
+        run: pip install . pyinstaller
+
+      - name: Freeze it
+        env:
+          TARGET: ${{ matrix.target }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          pyinstaller --clean --noconfirm rivalcfg-gui.spec
+          mv "dist/rivalcfg-gui${EXT}" "dist/rivalcfg-gui-${TAG}-${TARGET}${EXT}"
+          ls -lh dist/
+
+      - name: Check it starts
+        env:
+          BINARY: dist/rivalcfg-gui-${{ env.TAG }}-${{ matrix.target }}${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          chmod +x "$BINARY"
+          test "$("$BINARY" --version)" = "$TAG"
+
+      - name: Check it serves
+        if: runner.os != 'Windows'
+        env:
+          BINARY: dist/rivalcfg-gui-${{ env.TAG }}-${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          "./$BINARY" --port 8777 --no-browser --demo &
+          for _ in $(seq 1 25); do
+            if curl -fs http://127.0.0.1:8777/api/status | grep -q '"connected":true'; then
+              echo "serving a fake mouse"
+              kill %1
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the binary never served a mouse"
+          kill %1
+          exit 1
+
+      - name: Upload it
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/rivalcfg-gui-${{ env.TAG }}-${{ matrix.target }}${{ matrix.ext }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: 🚀 Draft the Release
+    needs: binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check the tag matches the package version
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' rivalcfg_gui/__init__.py)
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::tag $TAG doesn't match __version__ $VERSION"
+            exit 1
+          fi
+
+      - name: Build the Python distributions
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+
+      - name: Collect the binaries
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Checksum everything
+        run: |
+          set -euo pipefail
+          ( cd dist && sha256sum ./* > SHA256SUMS )
+          cat dist/SHA256SUMS
+
+      - name: Attest the build provenance
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/rivalcfg-gui-*
+            dist/*.whl
+            dist/*.tar.gz
+          show-summary: false
+
+      - name: Find the previous release tag
+        id: prev
+        run: |
+          set -euo pipefail
+          PREV=$({ echo "$TAG"; git tag | grep -E '^[0-9]+\.[0-9]+\.0$' || true; } \
+            | sort -uV \
+            | awk -v cur="$TAG" '$0 == cur { print prev; exit } { prev = $0 }')
+          echo "tag=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Draft the release
+        id: draft
+        uses: softprops/action-gh-release@v3 # zizmor: ignore[superfluous-actions]
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          draft: true
+          generate_release_notes: true
+          previous_tag: ${{ steps.prev.outputs.tag }}
+          fail_on_unmatched_files: true
+          files: dist/*
+          token: ${{ secrets.RELEASE_TOKEN || secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Job summary
+        if: always()
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+          RELEASE_URL: ${{ steps.draft.outputs.url }}
+          ATTEST_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: |
+          {
+            echo "## Release ${TAG}"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Tag | [\`${TAG}\`](${REPO_URL}/releases/tag/${TAG}) |"
+            [ -n "$PREV_TAG" ] && echo "| Previous | \`${PREV_TAG}\` |"
+            [ -n "$ATTEST_URL" ] \
+              && echo "| Provenance | ✅ [View](${ATTEST_URL}) |" \
+              || echo "| Provenance | ⚠️ Not attested |"
+            [ -n "$RELEASE_URL" ] \
+              && echo "| Draft | ✅ [Review and publish](${RELEASE_URL}) |" \
+              || echo "| Draft | ❌ Failed |"
+            echo ""
+            echo "### Attached"
+            echo ""
+            echo '```'
+            ( cd dist && ls -1 )
+            echo '```'
+            echo "Publishing the draft kicks off 📡 Publish, which pushes it to PyPI."
+            true
+          } >> "$GITHUB_STEP_SUMMARY"

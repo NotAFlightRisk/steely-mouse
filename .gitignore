@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+result
+result-*
+dist/
+build/
+*.egg-info/
+
+.impeccable/
+.claude/
+
+# upstream rivalcfg checkout kept here for reference
+/rivalcfg/

@@ -1,0 +1,12 @@
+.git
+.direnv
+rivalcfg
+tests
+result
+result-*
+__pycache__
+*.egg-info
+.pytest_cache
+build
+.impeccable
+.claude
