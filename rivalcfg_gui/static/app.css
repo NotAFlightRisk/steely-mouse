@@ -244,6 +244,54 @@ input { caret-color: var(--accent); }
 .map__item { display: grid; gap: var(--s1); }
 .map__name { font-size: var(--t-sm); color: var(--muted); }
 
+/* ---- segmented switch ------------------------------------------------ */
+.seg { position: relative; display: inline-flex; gap: 2px; padding: 2px; background: var(--hair); border-radius: var(--r-pill); }
+.seg__input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.seg__label {
+  padding: 0.25rem var(--s3); border-radius: var(--r-pill); cursor: pointer;
+  font-size: var(--t-sm); font-weight: 500; color: var(--muted);
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.seg__label:hover { color: var(--text); }
+.seg__input:checked + .seg__label { background: var(--raise); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.22); }
+.seg__input:focus-visible + .seg__label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- gradient -------------------------------------------------------- */
+.grad { display: grid; gap: var(--s4); justify-items: start; }
+.grad__solid { display: flex; align-items: center; gap: var(--s2); }
+.grad__pane { display: grid; gap: var(--s3); inline-size: 100%; }
+
+.grad__preview {
+  position: relative; block-size: 30px; border-radius: var(--r-md); overflow: hidden;
+  background: linear-gradient(90deg, var(--ramp, var(--hair)));
+  border: 1px solid var(--line);
+}
+.grad__pin {
+  position: absolute; inset-block-end: 0; inset-inline-start: var(--at);
+  inline-size: 2px; block-size: 9px; margin-inline-start: -1px; border-radius: 1px 1px 0 0;
+  background: rgb(255 255 255 / 0.92); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.grad__sweep {
+  position: absolute; inset-block: 0; inline-size: 3px; margin-inline-start: -1.5px;
+  background: var(--text); box-shadow: 0 0 8px 1px var(--bg);
+  animation: sweep var(--cycle, 1000ms) linear infinite;
+}
+@keyframes sweep { from { inset-inline-start: 0; } to { inset-inline-start: 100%; } }
+
+.grad__stops { display: grid; gap: var(--s2); }
+.grad__stop { display: flex; align-items: center; gap: var(--s2); }
+.grad__pos { inline-size: 62px; }
+.grad__pct { font-size: var(--t-sm); color: var(--faint); font-variant-numeric: tabular-nums; }
+.grad__add { justify-self: start; }
+.grad__timing { display: flex; align-items: center; gap: var(--s3); padding-block-start: var(--s2); border-block-start: 1px solid var(--hair); }
+.grad__timing .range { flex: 1; min-inline-size: 90px; }
+.grad__timing .num { inline-size: 84px; }
+.grad__label { font-size: var(--t-sm); color: var(--muted); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .grad__sweep { animation: none; opacity: 0; }
+}
+
 /* ---- offline + skeleton ---------------------------------------------- */
 .offline { display: grid; align-content: center; justify-items: center; text-align: center; gap: var(--s3); min-block-size: min(66vh, 520px); max-inline-size: 46ch; margin-inline: auto; }
 .offline__art { inline-size: 92px; block-size: 92px; fill: none; stroke: var(--line); stroke-width: 3; stroke-linecap: round; }
