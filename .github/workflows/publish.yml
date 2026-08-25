@@ -1,0 +1,75 @@
+# Pushes the release artifacts to PyPI once a draft release is published.
+#
+# Uses PyPI trusted publishing, so there's no token to keep. Until that's set up
+# on the PyPI side this fails softly and says so in the summary.
+name: 📡 Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to publish (e.g. 1.2.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: publish-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    name: 📡 Push to PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Build the distributions
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+
+      - name: Upload to PyPI
+        id: upload
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          skip-existing: true
+
+      - name: Job summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.upload.outcome }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          {
+            echo "## Publish ${TAG}"
+            echo ""
+            if [ "$OUTCOME" = "success" ]; then
+              echo "✅ On PyPI: https://pypi.org/project/rivalcfg-gui/${TAG}/"
+            else
+              echo "⚠️ PyPI upload didn't go through."
+              echo ""
+              echo "If this is the first run, add a trusted publisher on PyPI for"
+              echo "\`${GITHUB_REPOSITORY}\`, workflow \`publish.yml\`, environment \`pypi\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

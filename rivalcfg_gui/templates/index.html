@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-token="{{ token }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mouse settings</title>
+<meta name="description" content="Configure a SteelSeries mouse: DPI stages, polling rate, RGB lighting, button mapping and power timers.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0e0f12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="robots" content="noindex">
+<meta property="og:title" content="Mouse settings">
+<meta property="og:description" content="Configure a SteelSeries mouse from your browser.">
+<meta property="og:type" content="website">
+<link rel="icon" href="{{ url_for('static', filename='icon.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="6"/><path d="M12 6.5v4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M3.5 18.5a9 9 0 1 1 17 0"/><path d="m12 18.5 4.6-6.4"/><circle cx="12" cy="18.5" r="1.4"/></symbol>
+  <symbol id="i-light" viewBox="0 0 24 24"><path d="M9.5 18h5"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 1 3.6 10.8c-.6.5-.9 1.1-.9 1.8H9.3c0-.7-.3-1.3-.9-1.8A6 6 0 0 1 12 3Z"/></symbol>
+  <symbol id="i-buttons" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7" width="16" height="10" rx="2.5"/><path d="M21.5 10.5v3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3.5h11L20.5 8v12.5h-17V3.5Z"/><path d="M8 3.5v6h7v-6M8 20.5V15h8v5.5"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3.5 5.5v5h5"/><path d="M4.6 13a8 8 0 1 0 1.2-5.6L3.5 10.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.5 5.5v5h-5"/><path d="M19.4 13a8 8 0 1 1-1.2-5.6l2.3 3.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2L12 3.5Z"/><path d="M12 10v4M12 17.2h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12.5" height="12.5" rx="2.5"/><path d="M15 6.5v-2a2 2 0 0 0-2-2H4.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+  <symbol id="i-other" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.5l3 2"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to settings</a>
+
+<div class="app">
+  <aside class="rail">
+    <header class="device">
+      <span class="device__badge"><svg class="ico ico--lg"><use href="#i-mouse"/></svg></span>
+      <span class="device__text">
+        <h1 class="device__name" id="deviceName">Looking for a mouse</h1>
+        <p class="device__meta" id="deviceMeta">Scanning USB</p>
+      </span>
+      <span class="pulse" id="pulse" data-state="searching" role="img" aria-label="Searching"></span>
+    </header>
+
+    <div class="battery" id="battery" hidden>
+      <div class="battery__head">
+        <svg class="ico"><use href="#i-battery"/></svg>
+        <span class="battery__label">Battery</span>
+        <span class="battery__value" id="batteryValue">--</span>
+      </div>
+      <div class="meter" role="progressbar" aria-labelledby="batteryValue" id="batteryBar" aria-valuemin="0" aria-valuemax="100">
+        <span class="meter__fill" id="batteryFill"></span>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav" aria-label="Setting groups"></nav>
+
+    <footer class="rail__foot">
+      <button class="btn btn--primary" id="save" type="button" disabled>
+        <svg class="ico"><use href="#i-save"/></svg><span>Save to mouse</span>
+      </button>
+      <button class="btn" id="reset" type="button" disabled>
+        <svg class="ico"><use href="#i-reset"/></svg><span>Reset defaults</span>
+      </button>
+      <p class="rail__note">Changes apply instantly. Saving writes them to onboard memory so they survive a reboot, though some mice keep lighting colours in software only.</p>
+    </footer>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="skeleton" id="skeleton" aria-hidden="true">
+      <span class="skeleton__bar" style="--w:38%"></span>
+      <span class="skeleton__row"></span>
+      <span class="skeleton__row"></span>
+      <span class="skeleton__bar" style="--w:26%"></span>
+      <span class="skeleton__row"></span>
+    </div>
+
+    <section class="offline" id="offline" aria-labelledby="offlineTitle" hidden>
+      <svg class="offline__art" viewBox="0 0 120 120" aria-hidden="true">
+        <rect x="42" y="16" width="36" height="60" rx="18"/>
+        <path d="M60 28v12"/>
+        <path d="M28 92c8-6 18-9 32-9s24 3 32 9"/>
+        <path d="M22 22 98 98" class="offline__slash"/>
+      </svg>
+      <h2 id="offlineTitle">No mouse found</h2>
+      <p id="offlineBody">Plug in a supported SteelSeries mouse, or wake it if it has gone to sleep.</p>
+      <p class="offline__why" id="offlineHint" hidden></p>
+      <div class="fix" id="offlineFix" hidden>
+        <code id="offlineCommand"></code>
+        <button class="fix__copy" id="offlineCopy" type="button" aria-label="Copy command">
+          <svg class="ico"><use href="#i-copy"/></svg>
+        </button>
+      </div>
+      <div class="offline__actions">
+        <button class="btn btn--primary" id="retry" type="button">
+          <svg class="ico"><use href="#i-refresh"/></svg><span>Scan again</span>
+        </button>
+      </div>
+      <p class="offline__hint">No hardware to hand? Restart with <code>rivalcfg-gui --demo</code> for a fake mouse.</p>
+    </section>
+
+    <div id="sections"></div>
+  </main>
+</div>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<span class="sr" id="live" aria-live="polite"></span>
+
+</body>
+</html>
