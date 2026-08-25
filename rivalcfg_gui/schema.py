@@ -1,6 +1,9 @@
 """Turns a rivalcfg device profile into something the frontend can render."""
 
+from rivalcfg.color_helpers import is_color, parse_color_gradient_string, parse_color_string
 from rivalcfg.handlers.buttons import layout_multimedia, layout_qwerty
+from rivalcfg.handlers.rgbgradient import is_rgbgradient
+from rivalcfg.helpers import parse_param_string
 
 # rivalcfg value_type -> the control we draw for it.
 # Anything missing falls back to a text box that takes the same syntax the CLI
@@ -11,6 +14,8 @@ CONTROLS = {
     "range_choice": "slider",
     "rgbcolor": "color",
     "reactive_rgbcolor": "color",
+    "rgbgradient": "gradient",
+    "rgbgradientv2": "gradient",
     "multidpi_range_choice": "dpi",
     "multidpi_range": "dpi",
     "buttons": "buttons",
@@ -19,10 +24,13 @@ CONTROLS = {
 
 # Settings whose syntax is too rich for a widget, so we show the CLI hint.
 HINTS = {
-    "rgbgradient": "rainbow, or gradient(duration=1000; colors=0%: red, 100%: blue)",
-    "rgbgradientv2": "rainbow, or gradient(duration=1000; colors=0%: red, 100%: blue)",
     "multidpi_range_choice_xy": "400, 800, 1200 or 800x600, 1200x900 for per-axis DPI",
 }
+
+# rivalcfg caps a gradient at 14 stops, and durations are milliseconds per cycle.
+MAX_STOPS = 14
+DURATION = (100, 10000, 100)
+GRADIENT_PARSERS = {"rgbgradient": {"duration": int, "colors": parse_color_gradient_string}}
 
 GROUPS = (
     ("Buttons", ("button",)),
@@ -48,6 +56,38 @@ def parse_dpi(value, active=0):
         else:
             presets = list(value or [])
     return {"presets": [int(dpi) for dpi in presets], "active": int(active or 0)}
+
+
+def control_for(value_type):
+    """The one place a value_type becomes a widget. Everything else asks here."""
+    return CONTROLS.get(value_type or "none", "text")
+
+
+def to_hex(colour):
+    """Anything rivalcfg calls a colour, as #rrggbb for an <input type=color>."""
+    if isinstance(colour, (list, tuple)) and len(colour) >= 3:
+        return "#%02x%02x%02x" % tuple(colour[:3])
+    if isinstance(colour, str) and is_color(colour):
+        return to_hex(parse_color_string(colour))
+    return "#ffffff"
+
+
+def parse_gradient(value):
+    """These settings take a plain colour or a gradient, so say which we've got."""
+    duration, stops = DURATION[0] * 10, []
+    if isinstance(value, dict) and "colors" in value:
+        stops, duration = value.get("colors") or [], value.get("duration", duration)
+    elif isinstance(value, str) and is_rgbgradient(value)[0]:
+        parsed = parse_param_string(value, value_parsers=GRADIENT_PARSERS)["rgbgradient"]
+        stops, duration = parsed.get("colors") or [], parsed.get("duration", duration)
+    else:
+        return {"mode": "solid", "color": to_hex(value), "duration": duration, "stops": []}
+    return {
+        "mode": "gradient",
+        "color": to_hex(stops[0]["color"]) if stops else "#ffffff",
+        "duration": int(duration),
+        "stops": [{"pos": int(s["pos"]), "color": to_hex(s["color"])} for s in stops],
+    }
 
 
 def group_for(name):
@@ -85,7 +125,7 @@ def _buttons(info):
 def describe(name, info):
     """Build a JSON-safe descriptor for one setting."""
     value_type = info.get("value_type") or "none"
-    control = CONTROLS.get(value_type, "text")
+    control = control_for(value_type)
     label = info.get("label") or name.replace("_", " ")
     low, high, step = ((info.get("input_range") or [0, 100]) + [1])[:3]
 
@@ -115,6 +155,10 @@ def describe(name, info):
             max_count=info.get("max_preset_count", 5),
             default=parse_dpi(info.get("default")),
         )
+    elif control == "gradient":
+        low, high, step = DURATION
+        field.update(min=low, max=high, step=step, max_stops=MAX_STOPS)
+        field["default"] = parse_gradient(info.get("default"))
     elif control == "buttons":
         field.update(_buttons(info))
     elif control == "text":

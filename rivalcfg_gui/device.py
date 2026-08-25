@@ -7,7 +7,7 @@ from contextlib import contextmanager, suppress
 import rivalcfg
 
 from .errors import AppError, absent, translate
-from .schema import describe_profile, parse_dpi
+from .schema import control_for, describe_profile, parse_dpi, parse_gradient
 
 log = logging.getLogger(__name__)
 
@@ -99,14 +99,17 @@ class Device:
     def _values(mouse):
         values = {}
         for name, info in mouse.mouse_profile["settings"].items():
-            if info.get("value_type") == "none":
+            control = control_for(info.get("value_type"))
+            if control == "action":
                 continue
             try:
                 stored = mouse.mouse_settings.get(name)
             except KeyError:
                 continue
-            if str(info.get("value_type", "")).startswith("multidpi"):
+            if control == "dpi":
                 stored = parse_dpi(stored)
+            elif control == "gradient":
+                stored = parse_gradient(stored)
             values[name] = stored
         return values
 
@@ -118,10 +121,11 @@ class Device:
                 raise ValueError("This mouse has no %r setting." % name)
 
             log.debug("set %s to %r", name, value)
+            control = control_for(settings[name].get("value_type"))
             write = getattr(mouse, "set_%s" % name)
-            if settings[name].get("value_type") == "none":
+            if control == "action":
                 write()
-            elif isinstance(value, dict):
+            elif control == "dpi" and isinstance(value, dict):
                 # DPI presets carry the active stage alongside the values
                 write(value.get("presets") or [], value.get("active") or 0)
             else:

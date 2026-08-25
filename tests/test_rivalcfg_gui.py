@@ -1,5 +1,6 @@
 """Tests for the schema translation, the device wrapper and the HTTP guard."""
 
+import json
 import os
 
 import pytest
@@ -46,9 +47,8 @@ def test_group_for(name, group):
 
 
 def test_unknown_value_type_falls_back_to_text():
-    field = schema.describe("mystery", {"value_type": "rgbgradient", "label": "Mystery"})
+    field = schema.describe("mystery", {"value_type": "whatever_comes_next", "label": "Mystery"})
     assert field["control"] == "text"
-    assert field["hint"]
 
 
 def test_labels_get_a_capital():
@@ -77,10 +77,26 @@ def test_every_rivalcfg_device_describes_cleanly():
                 "dpi",
                 "buttons",
                 "action",
+                "gradient",
                 "text",
             }
             if field["control"] in ("slider", "dpi"):
                 assert field["min"] < field["max"]
+
+
+def test_every_device_serves_its_settings(monkeypatch):
+    """describe_profile alone missed a crash in _values, so walk both for every mouse."""
+    from rivalcfg import devices
+
+    monkeypatch.setenv("RIVALCFG_DRY", "1")
+    broken = []
+    for (vendor, product), profile in devices.PROFILES.items():
+        monkeypatch.setenv("RIVALCFG_PROFILE", "%04x:%04x" % (vendor, product))
+        try:
+            json.dumps(Device().schema())
+        except Exception as error:
+            broken.append("%s: %s" % (profile["name"], error))
+    assert not broken, broken
 
 
 def test_descriptor_is_json_safe():
@@ -299,6 +315,75 @@ def test_an_unknown_route_is_json_too(client):
     response = client.get("/api/nope")
     assert response.status_code == 404
     assert "error" in response.get_json()
+
+
+# ---- gradients -------------------------------------------------------------
+GRADIENT = "rgbgradient(duration=1000; colors=0%: #ff0000, 33%: #00ff00, 66%: #0000ff)"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ((255, 0, 0), "#ff0000"),
+        ("red", "#ff0000"),
+        ("F00", "#ff0000"),
+        ("#00FF00", "#00ff00"),
+        (None, "#ffffff"),
+        ("nonsense", "#ffffff"),
+    ],
+)
+def test_to_hex(value, expected):
+    assert schema.to_hex(value) == expected
+
+
+def test_a_gradient_string_becomes_editable_stops():
+    parsed = schema.parse_gradient(GRADIENT)
+    assert parsed["mode"] == "gradient"
+    assert parsed["duration"] == 1000
+    assert parsed["stops"] == [
+        {"pos": 0, "color": "#ff0000"},
+        {"pos": 33, "color": "#00ff00"},
+        {"pos": 66, "color": "#0000ff"},
+    ]
+
+
+def test_a_plain_colour_stays_solid():
+    parsed = schema.parse_gradient("lime")
+    assert parsed["mode"] == "solid"
+    assert parsed["color"] == "#00ff00"
+    assert parsed["stops"] == []
+
+
+def test_a_gradient_dict_round_trips():
+    given = {
+        "duration": 2500,
+        "colors": [{"pos": 0, "color": "red"}, {"pos": 50, "color": (0, 0, 255)}],
+    }
+    parsed = schema.parse_gradient(given)
+    assert parsed["duration"] == 2500
+    assert [s["color"] for s in parsed["stops"]] == ["#ff0000", "#0000ff"]
+
+
+def test_gradient_settings_get_a_real_control():
+    """Eleven device families have a gradient as their only colour control."""
+    from rivalcfg import devices
+
+    profile = devices.PROFILES[(0x1038, 0x1720)]
+    field = next(f for f in schema.describe_profile(profile) if f["name"] == "logo_color")
+    assert field["control"] == "gradient"
+    assert field["max_stops"] == schema.MAX_STOPS
+    assert field["default"]["mode"] == "gradient"
+
+
+def test_a_gradient_device_round_trips_through_apply(monkeypatch):
+    monkeypatch.setenv("RIVALCFG_PROFILE", "1038:1720")
+    device = Device()
+    values = device.apply(
+        "logo_color", {"duration": 3000, "colors": [{"pos": 0, "color": "#ff00ff"}]}
+    )
+    assert values["logo_color"]["duration"] == 3000
+    assert values["logo_color"]["stops"][0]["color"] == "#ff00ff"
+    assert device.apply("logo_color", "#123456")["logo_color"]["mode"] == "solid"
 
 
 # ---- cli -------------------------------------------------------------------

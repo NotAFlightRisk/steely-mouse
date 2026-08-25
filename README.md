@@ -143,6 +143,10 @@ Many wireless mice change USB product id when you plug the cable in, and drop of
 entirely when they sleep. The app polls for this and reconnects on its own, so a sleeping
 mouse reads as disconnected rather than as a crash.
 
+Mice with a single addressable zone, like the Rival 310 and Sensei TEN, take a looping colour
+gradient rather than a flat colour. Those get a stop editor with a live preview, and a **Solid**
+mode if you just want one colour.
+
 Effects like the rainbow are one-shot commands in the hardware rather than toggles, so
 there is a **Restore colours** button next to them that writes your zone colours back.
 
@@ -185,8 +189,8 @@ their own labels, value types, ranges and defaults, so the frontend renders cont
 that description instead of hardcoding anything per device. Adding support for a new mouse
 usually means adding nothing at all.
 
-Settings whose syntax is richer than a widget can express (RGB gradients, per axis DPI) fall
-back to a text box that takes the same string the rivalcfg CLI takes.
+The one syntax with no widget is per-axis DPI, which falls back to a text box taking the same
+string the rivalcfg CLI takes.
 
 ---
 
