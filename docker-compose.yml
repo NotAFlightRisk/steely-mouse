@@ -4,6 +4,14 @@ services:
     container_name: rivalcfg-gui
     restart: unless-stopped
     ports:
-      - 8777:8777
+      # loopback only, since anything that reaches this port can retune your mouse
+      - 127.0.0.1:8777:8777
     devices:
+      # whichever node yours landed on, check with: ls -l /dev/hidraw*
       - /dev/hidraw0:/dev/hidraw0
+    volumes:
+      # keeps the settings the UI reads back after a restart
+      - rivalcfg:/root/.config/rivalcfg
+
+volumes:
+  rivalcfg:

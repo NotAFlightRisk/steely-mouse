@@ -18,6 +18,7 @@ jobs:
   # Work out what kind of files changed, so unrelated jobs can sit this one out.
   changes:
     name: 🔍 Detect Changes
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -57,6 +58,7 @@ jobs:
     name: 🧼 Lint
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -76,6 +78,7 @@ jobs:
     name: 🎨 Format
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -96,6 +99,7 @@ jobs:
     name: ${{ matrix.emoji }} Python ${{ matrix.python }}
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -125,6 +129,7 @@ jobs:
     name: 📦 Package
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -151,6 +156,7 @@ jobs:
     name: 🧊 Frozen Binary
     needs: changes
     if: needs.changes.outputs.python == 'true'
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -165,10 +171,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhidapi-dev libudev-dev
       - name: Build it
         run: |
+          set -euo pipefail
           pip install . pyinstaller
           pyinstaller --clean --noconfirm rivalcfg-gui.spec
       - name: Check it serves
         run: |
+          set -euo pipefail
           ./dist/rivalcfg-gui --version
           ./dist/rivalcfg-gui --port 8777 --no-browser --demo &
           for _ in $(seq 1 25); do
@@ -186,6 +194,7 @@ jobs:
     name: ❄️ Nix
     needs: changes
     if: needs.changes.outputs.nix == 'true'
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -204,6 +213,7 @@ jobs:
     name: 🐳 Docker
     needs: changes
     if: needs.changes.outputs.docker == 'true'
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -239,6 +249,7 @@ jobs:
     name: 🤖 Workflow Lint
     needs: changes
     if: needs.changes.outputs.workflows == 'true'
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -259,6 +270,7 @@ jobs:
 
   secrets:
     name: 🔑 Secret Scan
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -270,3 +282,4 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'

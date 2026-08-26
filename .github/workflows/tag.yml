@@ -37,6 +37,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      pull-requests: read
     env:
       HAS_BOT: ${{ secrets.BOT_TOKEN != '' }}
     steps:
@@ -69,32 +70,38 @@ jobs:
       - name: Work out the next version
         id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          read_version() { git show "$1:$VERSION_FILE" 2>/dev/null | sed -n 's/^__version__ = "\(.*\)"$/\1/p'; }
-          CURRENT=$(read_version HEAD)
+          git fetch --tags --force
+          CURRENT=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$VERSION_FILE")
 
-          if [ "$IS_MANUAL" = "true" ] || ! git rev-parse -q --verify HEAD^ >/dev/null; then
-            CHANGED=code
+          stop() { echo "$1"; { echo "skip=true"; echo "reason=$1"; } >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # ask for the PR's own files, since main may have moved on since the merge
+          if [ "$IS_MANUAL" = "true" ]; then
+            CHANGED=manual
           else
-            CHANGED=$(git diff --name-only HEAD^ HEAD \
+            CHANGED=$(gh pr view "$PR_NUMBER" --json files -q '.files[].path' \
               | grep -E '^(rivalcfg_gui/|tests/|pyproject\.toml|flake\.(nix|lock)|Dockerfile)' || true)
           fi
-          if [ -z "$CHANGED" ]; then
-            echo "nothing worth tagging in this merge"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          [ -n "$CHANGED" ] || stop "Nothing to tag, this merge didn't touch any code."
 
           if [ "$IS_MANUAL" = "true" ] && [ -n "$INPUT_VERSION" ]; then
             NEXT="$INPUT_VERSION"
-          elif [ "$CHANGED" != "code" ] && [ "$CURRENT" != "$(read_version HEAD^)" ]; then
+          elif printf '%s\n' "$CHANGED" | grep -qFx "$VERSION_FILE"; then
             echo "the PR bumped it already"
             NEXT="$CURRENT"
           else
             IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
             NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+
+          # nothing has been written yet, so this is the last safe place to back out
+          if git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; then
+            stop "Tag \`$NEXT\` already exists, so nothing was changed."
           fi
 
           echo "$CURRENT -> $NEXT"
@@ -127,12 +134,6 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
         run: |
           set -euo pipefail
-          git fetch --tags --force
-          if git rev-parse "refs/tags/$NEXT" >/dev/null 2>&1; then
-            echo "::warning::tag $NEXT already exists, leaving it alone"
-            echo "result=existed" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           {
             printf 'rivalcfg-gui %s\n\n' "$NEXT"
             if [ -n "$PR_NUMBER" ]; then
@@ -168,6 +169,7 @@ jobs:
         env:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           SKIP: ${{ steps.plan.outputs.skip }}
+          REASON: ${{ steps.plan.outputs.reason }}
           CURRENT: ${{ steps.plan.outputs.current }}
           NEXT: ${{ steps.plan.outputs.next }}
           BUMP_SHA: ${{ steps.bump.outputs.sha }}
@@ -178,7 +180,7 @@ jobs:
             echo "## Tag"
             echo ""
             if [ "$SKIP" != "false" ]; then
-              echo "Nothing to tag, this merge didn't touch any code."
+              echo "${REASON:-Nothing was tagged.}"
               exit 0
             fi
             echo "| Step | Result |"
@@ -189,7 +191,6 @@ jobs:
               || echo "| Bump commit | ⏭️ Already bumped in the PR |"
             case "$TAG_RESULT" in
               created) echo "| Tag | ✅ [\`${NEXT}\`](${REPO_URL}/releases/tag/${NEXT}) |" ;;
-              existed) echo "| Tag | ⏭️ \`${NEXT}\` was already there |" ;;
               *) echo "| Tag | ❌ Failed |" ;;
             esac
             case "$FOLLOWUP" in
