@@ -70,16 +70,17 @@
       <button class="btn" id="reset" type="button" disabled>
         <svg class="ico"><use href="#i-reset"/></svg><span>Reset defaults</span>
       </button>
-      <p class="rail__note">Changes apply instantly. Saving writes them to onboard memory so they survive a reboot, though some mice keep lighting colours in software only.</p>
+      <p class="rail__note">Changes apply instantly. Saving writes them to onboard memory so they survive a reboot, though the newer mice don't keep lighting colours at all.</p>
+      <p class="rail__ver">rivalcfg-gui {{ version }}</p>
     </footer>
   </aside>
 
   <main class="main" id="main">
     <div class="skeleton" id="skeleton" aria-hidden="true">
-      <span class="skeleton__bar" style="--w:38%"></span>
+      <span class="skeleton__bar"></span>
       <span class="skeleton__row"></span>
       <span class="skeleton__row"></span>
-      <span class="skeleton__bar" style="--w:26%"></span>
+      <span class="skeleton__bar skeleton__bar--short"></span>
       <span class="skeleton__row"></span>
     </div>
 

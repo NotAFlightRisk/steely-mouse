@@ -24,7 +24,20 @@ const GROUP_ICON = {
 let fields = [];
 let values = {};
 let online = null;
+let loaded = false;
+let deviceId = null;
+let gen = 0;
 let spy = null;
+let volatile = false;
+
+// these mice drop their colours whenever they sleep, so offer to write them back
+const AUTO_KEY = "rivalcfg-gui:auto-restore";
+let autoRestore = false;
+try {
+  autoRestore = localStorage.getItem(AUTO_KEY) === "1";
+} catch {
+  // private browsing, so the choice just won't stick
+}
 
 /* ---- dom ------------------------------------------------------------- */
 function el(tag, props = {}, ...children) {
@@ -52,7 +65,6 @@ function icon(name, cls = "ico") {
 
 const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const humanise = (text) => String(text).replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
-const longFlag = (flags) => flags.find((flag) => flag.startsWith("--")) || flags[0];
 const clamp = (value, f) => Math.min(f.max, Math.max(f.min, Number(value) || f.min));
 
 /* ---- api ------------------------------------------------------------- */
@@ -85,11 +97,11 @@ function toast(message, tone = "ok", hint = "") {
 const fault = (error) => toast(error.message, "error", error.hint || "");
 
 /* ---- writing --------------------------------------------------------- */
-const timers = new Map();
+const pending = new Map();
 const queues = new Map();
 
 function write(name, value, instant = false) {
-  clearTimeout(timers.get(name));
+  clearTimeout(pending.get(name)?.id);
   const post = async () => {
     try {
       values = (await api("/api/settings", { name, value })).values;
@@ -97,18 +109,29 @@ function write(name, value, instant = false) {
       return true;
     } catch (error) {
       fault(error);
+      resync();
       return false;
     }
   };
   // one write per setting at a time, so quick clicks can't land out of order
   const send = () => {
+    pending.delete(name);
     const next = (queues.get(name) || Promise.resolve()).then(post, post);
     queues.set(name, next);
     return next;
   };
   if (instant) return send();
-  timers.set(name, setTimeout(send, 200));
+  pending.set(name, { id: setTimeout(send, 200), send });
   return Promise.resolve(true);
+}
+
+// let the debounced writes go early, then wait for the wire to clear
+async function drain() {
+  for (const { id, send } of [...pending.values()]) {
+    clearTimeout(id);
+    send();
+  }
+  await Promise.allSettled([...queues.values()]);
 }
 
 function flash(name) {
@@ -432,8 +455,8 @@ function buildGradient(field, id) {
 
 function buildDpi(field, id) {
   const start = values[field.name] ?? field.default ?? {};
-  let presets = [...(start.presets || [field.min])];
-  let active = Math.min(start.active || 0, presets.length - 1);
+  let presets = [...(start.presets?.length ? start.presets : [field.min])];
+  let active = Math.min(Math.max(start.active || 0, 0), presets.length - 1);
 
   const axis = scale(field);
   const list = el("div", { className: "stages" });
@@ -480,7 +503,8 @@ function buildDpi(field, id) {
     };
     drop.onclick = () => {
       presets.splice(index, 1);
-      active = Math.min(active, presets.length - 1);
+      if (index < active) active -= 1;
+      else if (index === active) active = Math.min(active, presets.length - 1);
       draw();
       send();
     };
@@ -539,24 +563,63 @@ function buildButtons(field, id) {
   return grid;
 }
 
+// one write per zone, in order, so a half-finished restore can't be mistaken for a win
+async function restoreColours() {
+  const colours = fields.filter((f) => f.control === "color" && !f.nullable);
+  const done = [];
+  for (const colour of colours) {
+    done.push(await write(colour.name, values[colour.name] ?? colour.default, true));
+  }
+  return colours.length > 0 && done.every(Boolean);
+}
+
 function buildAction(field, id) {
   const verb = /^enable/i.test(field.description) ? "Enable" : "Apply";
   const fire = el("button", { type: "button", className: "btn", id }, icon("check"), verb);
   fire.onclick = () => write(field.name, null, true);
 
   // these are one-shot commands with no off switch, re-sending a colour is the way back
-  const colours = fields.filter((f) => f.control === "color" && !f.nullable);
-  if (!colours.length) return fire;
+  if (!fields.some((f) => f.control === "color" && !f.nullable)) return fire;
 
   const undo = el("button", { type: "button", className: "btn" }, icon("reset"), "Restore colours");
   undo.onclick = async () => {
-    const done = [];
-    for (const colour of colours) {
-      done.push(await write(colour.name, values[colour.name] ?? colour.default, true));
-    }
-    if (done.every(Boolean)) toast("Your colours are back on.");
+    if (await restoreColours()) toast("Your colours are back on.");
   };
   return el("div", { className: "pair" }, fire, undo);
+}
+
+function buildAutoRow() {
+  const id = "auto-restore";
+  const toggle = el("input", {
+    type: "checkbox",
+    className: "switch",
+    id,
+    checked: autoRestore,
+  });
+  toggle.onchange = () => {
+    autoRestore = toggle.checked;
+    try {
+      localStorage.setItem(AUTO_KEY, autoRestore ? "1" : "0");
+    } catch {
+      // nothing to do, it just won't be remembered next time
+    }
+    if (autoRestore) restoreColours();
+  };
+  return el(
+    "div",
+    { className: "row", "data-field": "auto-restore" },
+    el(
+      "div",
+      {},
+      el("label", { className: "row__label", htmlFor: id }, "Reapply colours on wake"),
+      el(
+        "p",
+        { className: "row__hint" },
+        "This mouse forgets its colours when it sleeps. Write them back as soon as it returns."
+      )
+    ),
+    el("div", { className: "row__control" }, toggle)
+  );
 }
 
 function buildText(field, id) {
@@ -602,8 +665,7 @@ function buildRow(field) {
       "div",
       {},
       el(labelled ? "label" : "h3", { className: "row__label", id: labelled ? null : id, htmlFor: labelled ? id : null }, field.label),
-      field.description && el("p", { className: "row__hint" }, field.description),
-      field.cli.length > 0 && el("p", { className: "row__cli" }, longFlag(field.cli))
+      field.description && el("p", { className: "row__hint" }, field.description)
     ),
     control
   );
@@ -622,7 +684,8 @@ function render() {
         "section",
         { className: "section", id: "g-" + slug(name) },
         el("div", { className: "section__head" }, icon(GROUP_ICON[name] || "other"), el("h2", { className: "section__title" }, name)),
-        el("div", { className: "section__body" }, ...list.map(buildRow))
+        el("div", { className: "section__body" }, ...list.map(buildRow),
+          name === "Lighting" && volatile ? buildAutoRow() : null)
       )
     )
   );
@@ -681,15 +744,25 @@ function applyStatus(status) {
   showBattery(status.battery);
   $("save").disabled = $("reset").disabled = !online;
 
-  if (online === was) return;
-  if (online) return loadSchema();
+  if (online) {
+    // reload when the settings never arrived, or the mouse swapped wired for wireless
+    if (!loaded || status.id !== deviceId) loadSchema(status.id);
+    return;
+  }
 
   fields = [];
+  loaded = false;
+  deviceId = null;
+  gen += 1;
+  showOffline(status);
+  if (was !== false) $("live").textContent = "Mouse disconnected";
+}
+
+function showOffline(trouble) {
   $("skeleton").hidden = true;
   $("sections").hidden = true;
   $("offline").hidden = false;
-  showTrouble(status);
-  $("live").textContent = "Mouse disconnected";
+  showTrouble(trouble);
 }
 
 function showTrouble({ kind, error, hint, fix }) {
@@ -710,18 +783,36 @@ async function copyFix() {
   }
 }
 
-async function loadSchema() {
+async function loadSchema(id) {
+  const mine = ++gen;
   try {
     const data = await api("/api/schema");
+    if (mine !== gen) return;
     fields = data.fields;
     values = data.values;
+    volatile = Boolean(data.volatile);
+    deviceId = id;
+    loaded = true;
     render();
+    if (volatile && autoRestore) restoreColours();
     $("skeleton").hidden = true;
     $("offline").hidden = true;
     $("sections").hidden = false;
     $("live").textContent = "Mouse connected, settings loaded";
   } catch (error) {
-    fault(error);
+    if (mine !== gen) return;
+    loaded = false;
+    showOffline(error);
+  }
+}
+
+// after a rejected write, redraw from what the mouse actually holds
+async function resync() {
+  try {
+    values = (await api("/api/schema")).values;
+    render();
+  } catch {
+    // the next poll reports the disconnect
   }
 }
 
@@ -747,6 +838,7 @@ function wireActions() {
     const button = $("save");
     button.disabled = true;
     try {
+      await drain();
       await api("/api/save", {});
       toast("Saved to the mouse's onboard memory.");
     } catch (error) {
@@ -774,6 +866,7 @@ function wireActions() {
     }
     disarm();
     try {
+      await drain();
       values = (await api("/api/reset", {})).values;
       render();
       toast("Every setting is back to factory defaults.");

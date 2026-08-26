@@ -38,3 +38,7 @@ extend-exclude = ["rivalcfg"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
 ignore = ["UP031"]
+
+# a local rivalcfg checkout would otherwise sort as first-party here but not in CI
+[tool.ruff.lint.isort]
+known-third-party = ["rivalcfg"]
