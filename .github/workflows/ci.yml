@@ -42,11 +42,13 @@ jobs:
               - '**/*.py'
               - 'pyproject.toml'
               - 'rivalcfg-gui.spec'
+              - '.github/README.md'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
               - 'rivalcfg_gui/**'
               - 'pyproject.toml'
+              - '.github/README.md'
             nix:
               - 'flake.*'
               - 'rivalcfg_gui/**'
@@ -144,7 +146,7 @@ jobs:
         run: |
           pip install build twine
           python -m build
-          twine check dist/*
+          twine check --strict dist/*
       - name: Install the wheel on its own
         run: |
           python -m venv /tmp/check
@@ -272,6 +274,10 @@ jobs:
     name: 🔑 Secret Scan
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    # gitleaks reads the PR's commits to work out what to scan
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -283,3 +289,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
+
+  # The one check worth requiring on main, since everything above opts out by path.
+  gate:
+    name: ✅ CI
+    needs: [lint, format, test, package, binary, nix, docker, actions, secrets]
+    if: always()
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job did
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "$RESULTS"
+          case "$RESULTS" in
+            *failure* | *cancelled*) echo "::error::something above didn't pass"; exit 1 ;;
+          esac

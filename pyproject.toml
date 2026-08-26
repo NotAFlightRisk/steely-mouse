@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rivalcfg-gui"
 dynamic = ["version"]
 description = "A web GUI for configuring SteelSeries mice, built on rivalcfg"
-readme = "README.md"
+readme = ".github/README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -16,7 +16,7 @@ dependencies = ["flask>=3.0", "rivalcfg>=4.15"]
 rivalcfg-gui = "rivalcfg_gui.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/Lissy93/rivalcfg-gui"
+Homepage = "https://github.com/Lissy93/steely-mouse"
 
 [tool.setuptools]
 packages = ["rivalcfg_gui"]
