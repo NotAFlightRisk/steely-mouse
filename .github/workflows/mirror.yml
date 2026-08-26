@@ -28,6 +28,6 @@ jobs:
         with:
           ssh_key: ${{ secrets.CODEBERG_SSH }}
           host: git@codeberg.org
-          user: alicia
+          user: ${{ vars.CODEBERG_USER || github.repository_owner }}
           repo: rivalcfg-gui
           force_push: false

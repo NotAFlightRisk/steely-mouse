@@ -22,6 +22,7 @@ jobs:
       && github.event.pull_request.user.login != 'dependabot[bot]'
     permissions:
       pull-requests: write
+      issues: write
     steps:
       - name: Take the label off the conventional commit type
         env:
@@ -29,7 +30,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
+          CURRENT: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
+          set -euo pipefail
           prefix=${TITLE%%:*}
           type=${prefix%%(*}
           case "${type%!}" in
@@ -41,15 +44,22 @@ jobs:
           case "$prefix" in
             *'!') wanted="${wanted:+$wanted,}breaking-change" ;;
           esac
+
+          args=()
           for label in enhancement bug documentation breaking-change; do
-            case ",$wanted," in
-              *",$label,"*) ;;
-              *) stale="${stale:+$stale,}$label" ;;
-            esac
+            on_pr=; want=
+            case ",$CURRENT," in *",$label,"*) on_pr=yes ;; esac
+            case ",$wanted,"  in *",$label,"*) want=yes ;; esac
+            if [ -n "$want" ] && [ -z "$on_pr" ]; then
+              # a repo that has never seen a breaking change won't have the label yet
+              gh label create "$label" --color ededed >/dev/null 2>&1 || true
+              args+=(--add-label "$label")
+            elif [ -z "$want" ] && [ -n "$on_pr" ]; then
+              args+=(--remove-label "$label")
+            fi
           done
-          args=(--remove-label "$stale")
-          if [ -n "$wanted" ]; then
-            args+=(--add-label "$wanted")
+
+          if [ ${#args[@]} -gt 0 ]; then
+            gh pr edit "$NUMBER" "${args[@]}"
           fi
-          gh pr edit "$NUMBER" "${args[@]}"
           echo "### ${wanted:-no type label}" >> "$GITHUB_STEP_SUMMARY"

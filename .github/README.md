@@ -1,20 +1,20 @@
-# rivalcfg-gui
-
-A browser UI for configuring SteelSeries mice, sitting on top of
-[rivalcfg](https://github.com/flozz/rivalcfg).
-
-It reads whatever settings your mouse actually reports and builds the interface from
-that, so it works with every device rivalcfg supports rather than just one. DPI stages,
-polling rate, RGB zones, button mapping, sleep and dim timers, battery level.
+<h1 align="center">Steely Mouse</h1>
+<p align="center">
+<i>GUI configurator for SteelSeries mice using <a href="https://github.com/flozz/rivalcfg"><code>rivalcfg</code></a></i>
+<br />
+<img src="https://raw.githubusercontent.com/lissy93/steely-mouse/refs/heads/main/rivalcfg_gui/static/icon.svg?token=GHSAT0AAAAAAEGOHQA6LDQV4U3SJJHH5ZN42UO45XA" width="96" /><br />
+<br />
+</p>
 
 ## Getting Started
 
 There are several options for running...
 
-On Linux, whichever you pick, the mouse needs udev rules installed and your user in the
-`input` group. Without them the device nodes are root only and nothing can be opened. The
-NixOS module does both; everywhere else it's `sudo rivalcfg --update-udev`, once. macOS and
-Windows need no setup.
+> [!NOTE]
+> On Linux, whichever you pick, the mouse needs udev rules installed and your user in the `input` group.
+> Without them the device nodes are root only and nothing can be opened. The
+> NixOS module does both; everywhere else it's `sudo rivalcfg --update-udev`, once.
+> macOS and Windows need no setup.
 
 ### Download
 
@@ -131,30 +131,7 @@ rivalcfg-gui --demo
 
 ---
 
-## What You Get
-
-Settings apply the moment you change them. **Save to mouse** writes the current config to
-onboard memory so it survives a reboot. Some mice keep only part of that onboard: the
-wireless Aerox models, for instance, remember the default lighting mode but not the colours,
-so the colours come back after a power cycle. That is a firmware limit, not something the
-GUI can work around.
-
-Many wireless mice change USB product id when you plug the cable in, and drop off the bus
-entirely when they sleep. The app polls for this and reconnects on its own, so a sleeping
-mouse reads as disconnected rather than as a crash.
-
-Mice with a single addressable zone, like the Rival 310 and Sensei TEN, take a looping colour
-gradient rather than a flat colour. Those get a stop editor with a live preview, and a **Solid**
-mode if you just want one colour.
-
-Effects like the rainbow are one-shot commands in the hardware rather than toggles, so
-there is a **Restore colours** button next to them that writes your zone colours back.
-
----
-
 ## Configuration
-
-Flags win, then the environment, then these defaults.
 
 | Flag | Environment | Default | What it does |
 |---|---|---|---|
@@ -164,15 +141,9 @@ Flags win, then the environment, then these defaults.
 | `--no-browser` | | off | Don't open a browser on start |
 | `--demo [VID:PID]` | | off | Fake device, touches no hardware |
 
----
-
-## Security
-
-The API can rewrite your mouse's config, so a random web page should not be able to reach
-it. Requests are only served if their `Host` is loopback, which also stops DNS rebinding.
-Every write needs a token that only the served page has, and cross origin requests are
-rejected. That holds even in Docker, where the container binds `0.0.0.0` but anything
-arriving from the LAN still gets a 403.
+<sup>
+Precedence is flags, then the environment, then these defaults.
+</sup>
 
 ---
 
@@ -184,13 +155,20 @@ python -m rivalcfg_gui --demo
 pytest -q
 ```
 
-The interesting part is `schema.py`. rivalcfg's device profiles are plain dicts that carry
+The `schema.py` is rivalcfg's device profiles as plain dicts that carry
 their own labels, value types, ranges and defaults, so the frontend renders controls from
 that description instead of hardcoding anything per device. Adding support for a new mouse
 usually means adding nothing at all.
 
-The one syntax with no widget is per-axis DPI, which falls back to a text box taking the same
-string the rivalcfg CLI takes.
+The one syntax with no widget is per-axis DPI, which falls back to a text box
+
+---
+
+## Screenshot
+
+<p align="center">
+<img width="800" src="https://github.com/lissy93/steely-mouse/blob/main/.github/screenshot.png?raw=true" />
+</p>
 
 ---
 
