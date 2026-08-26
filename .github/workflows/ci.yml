@@ -273,6 +273,10 @@ jobs:
     name: 🔑 Secret Scan
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    # gitleaks reads the PR's commits to work out what to scan
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
