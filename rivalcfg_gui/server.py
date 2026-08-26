@@ -2,6 +2,7 @@
 
 import secrets
 from http import HTTPStatus
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template, request
@@ -11,7 +12,7 @@ from . import __version__
 from .device import Device
 from .errors import AppError
 
-LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+WILDCARD = ("0.0.0.0", "::", "")
 
 CSP = (
     "default-src 'self'; img-src 'self' data:; base-uri 'none'; "
@@ -23,6 +24,25 @@ def hostname(value):
     """Pull the host out of a Host or Origin header, IPv6 brackets included."""
     prefixed = value if "//" in value else "//" + value
     return (urlsplit(prefixed).hostname or "").lower()
+
+
+def is_loopback(name):
+    """Any 127.x address, ::1 or plain localhost. Everything else is another machine."""
+    if name == "localhost":
+        return True
+    try:
+        return ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+def browser_url(host, port):
+    """Where to point a browser. Wildcard and loopback binds are all just localhost."""
+    if host in WILDCARD or is_loopback(host):
+        host = "localhost"
+    elif ":" in host:
+        host = "[%s]" % host
+    return "http://%s:%d/" % (host, port)
 
 
 def fail(message, code, kind="request", hint=""):
@@ -39,10 +59,14 @@ def create_app(device=None):
     def guard():
         # This API reconfigures hardware, so it stays strictly local: the Host
         # check stops DNS rebinding, Origin and the token stop cross-site posts.
-        if hostname(request.host) not in LOOPBACK:
-            return fail("Only loopback requests are allowed.", HTTPStatus.FORBIDDEN)
+        if not is_loopback(hostname(request.host)):
+            return fail(
+                "Only loopback requests are allowed.",
+                HTTPStatus.FORBIDDEN,
+                hint="Reach it on localhost, or publish the port to 127.0.0.1 only.",
+            )
         origin = request.headers.get("Origin")
-        if origin and hostname(origin) not in LOOPBACK:
+        if origin and not is_loopback(hostname(origin)):
             return fail("Cross-origin requests are blocked.", HTTPStatus.FORBIDDEN)
         if request.method == "POST" and not secrets.compare_digest(
             request.headers.get("X-Token", ""), app.config["TOKEN"]
@@ -97,8 +121,8 @@ def create_app(device=None):
 
     @app.post("/api/settings")
     def write():
-        body = request.get_json(silent=True) or {}
-        name = body.get("name")
+        body = request.get_json(silent=True)
+        name = body.get("name") if isinstance(body, dict) else None
         if not isinstance(name, str):
             return fail("A setting name is required.", HTTPStatus.BAD_REQUEST)
         try:

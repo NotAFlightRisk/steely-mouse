@@ -1,15 +1,33 @@
 """Talks to the mouse through rivalcfg."""
 
 import logging
+import os
 import threading
 from contextlib import contextmanager, suppress
 
+import hid
 import rivalcfg
 
 from .errors import AppError, absent, translate
-from .schema import control_for, describe_profile, parse_dpi, parse_gradient
+from .schema import (
+    colors_are_volatile,
+    control_for,
+    describe_profile,
+    parse_dpi,
+    parse_gradient,
+)
 
 log = logging.getLogger(__name__)
+
+
+def on_bus(mouse):
+    """Still plugged in? Most profiles report no battery, so nothing else proves it."""
+    if "RIVALCFG_DRY" in os.environ:
+        return True
+    try:
+        return bool(hid.enumerate(mouse.vendor_id, mouse.product_id))
+    except Exception:
+        return True
 
 
 class Device:
@@ -65,6 +83,9 @@ class Device:
             try:
                 mouse = self._connect()
                 battery = mouse.battery
+                if battery["level"] is None and not on_bus(mouse):
+                    self.forget()
+                    raise absent()
             except AppError as error:
                 return dict(error.as_dict(), connected=False)
             except Exception as error:
@@ -93,6 +114,7 @@ class Device:
             return {
                 "fields": describe_profile(mouse.mouse_profile),
                 "values": self._values(mouse),
+                "volatile": colors_are_volatile(mouse.mouse_profile),
             }
 
     @staticmethod
