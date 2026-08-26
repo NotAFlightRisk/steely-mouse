@@ -2,7 +2,7 @@
 <p align="center">
 <i>GUI configurator for SteelSeries mice using <a href="https://github.com/flozz/rivalcfg"><code>rivalcfg</code></a></i>
 <br />
-<img src="https://raw.githubusercontent.com/lissy93/steely-mouse/refs/heads/main/rivalcfg_gui/static/icon.svg?token=GHSAT0AAAAAAEGOHQA6LDQV4U3SJJHH5ZN42UO45XA" width="96" /><br />
+<img src="https://raw.githubusercontent.com/lissy93/steely-mouse/refs/heads/main/rivalcfg_gui/static/icon.svg" width="96" /><br />
 <br />
 </p>
 

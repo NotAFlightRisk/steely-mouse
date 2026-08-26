@@ -128,6 +128,7 @@ input { caret-color: var(--accent); }
 }
 .rail__foot { margin-block-start: auto; display: grid; gap: var(--s2); }
 .rail__note { font-size: var(--t-xs); line-height: 1.5; color: var(--faint); }
+.rail__ver { font-size: var(--t-xs); color: var(--faint); opacity: 0.75; }
 
 /* ---- device + battery ------------------------------------------------ */
 .device { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s3); }
@@ -201,7 +202,6 @@ input { caret-color: var(--accent); }
 
 .row__label { display: block; font-weight: 500; }
 .row__hint { font-size: var(--t-sm); color: var(--muted); margin-block-start: 2px; }
-.row__cli { font: var(--t-xs) / 1 var(--mono); color: var(--faint); }
 .row__control { display: flex; align-items: center; gap: var(--s2); justify-self: end; inline-size: 100%; }
 .row--stack .row__control { display: grid; gap: var(--s2); justify-self: stretch; }
 
@@ -307,7 +307,9 @@ input { caret-color: var(--accent); }
 .fix__copy:hover { color: var(--text); background: var(--raise); }
 
 .skeleton { display: grid; gap: var(--s3); }
-.skeleton__bar, .skeleton__row { block-size: 12px; inline-size: var(--w, 100%); background: var(--hair); border-radius: var(--r-sm); animation: pulse 1.5s var(--ease) infinite; }
+.skeleton__bar, .skeleton__row { block-size: 12px; background: var(--hair); border-radius: var(--r-sm); animation: pulse 1.5s var(--ease) infinite; }
+.skeleton__bar { inline-size: 38%; }
+.skeleton__bar--short { inline-size: 26%; }
 .skeleton__row { block-size: 56px; border-radius: var(--r-lg); }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
@@ -326,7 +328,7 @@ input { caret-color: var(--accent); }
   .app { grid-template-columns: minmax(0, 1fr); }
   .rail { position: static; block-size: auto; border-inline-end: none; border-block-end: 1px solid var(--line); }
   .rail__foot { margin-block-start: 0; grid-template-columns: 1fr 1fr; }
-  .rail__note { grid-column: 1 / -1; }
+  .rail__note, .rail__ver { grid-column: 1 / -1; }
   .nav { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; padding-block-end: var(--s1); }
   .main { padding: var(--s5) var(--s4) var(--s7); }
   .section__body { padding-inline: var(--s4); }

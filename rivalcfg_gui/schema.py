@@ -27,6 +27,13 @@ HINTS = {
     "multidpi_range_choice_xy": "400, 800, 1200 or 800x600, 1200x900 for per-axis DPI",
 }
 
+# Where rivalcfg's own wording leaves the effect genuinely easy to misread.
+NOTES = {
+    "default_lighting": (
+        "Colours aren't stored in the mouse, so this only picks blank or rainbow for waking up."
+    ),
+}
+
 # rivalcfg caps a gradient at 14 stops, and durations are milliseconds per cycle.
 MAX_STOPS = 14
 DURATION = (100, 10000, 100)
@@ -132,11 +139,10 @@ def describe(name, info):
     field = {
         "name": name,
         "label": label[:1].upper() + label[1:],
-        "description": info.get("description", ""),
+        "description": ". ".join(filter(None, [info.get("description", ""), NOTES.get(name)])),
         "control": control,
         "group": group_for(name),
         "default": info.get("default"),
-        "cli": info.get("cli", []),
         # reactive colours accept "off", plain colour settings don't
         "nullable": value_type == "reactive_rgbcolor",
     }
@@ -165,6 +171,11 @@ def describe(name, info):
         field["hint"] = HINTS.get(value_type, "")
 
     return field
+
+
+def colors_are_volatile(profile):
+    """These mice only store a wake-up effect, so the zone colours go when they sleep."""
+    return "default_lighting" in profile.get("settings", {})
 
 
 def describe_profile(profile):

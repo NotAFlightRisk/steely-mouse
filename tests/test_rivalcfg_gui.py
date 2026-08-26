@@ -1,18 +1,19 @@
 """Tests for the schema translation, the device wrapper and the HTTP guard."""
 
+import argparse
 import json
 import os
 
 import pytest
 
-os.environ.setdefault("RIVALCFG_DRY", "1")
-os.environ.setdefault("RIVALCFG_PROFILE", "1038:1838")
+os.environ["RIVALCFG_DRY"] = "1"
+os.environ["RIVALCFG_PROFILE"] = "1038:1838"
 
 from rivalcfg_gui import errors, schema
-from rivalcfg_gui.__main__ import parse_args
-from rivalcfg_gui.device import Device
+from rivalcfg_gui.__main__ import parse_args, port_number
+from rivalcfg_gui.device import Device, on_bus
 from rivalcfg_gui.errors import AppError
-from rivalcfg_gui.server import create_app, hostname
+from rivalcfg_gui.server import browser_url, create_app, hostname, is_loopback
 
 
 # ---- schema ----------------------------------------------------------------
@@ -49,6 +50,17 @@ def test_group_for(name, group):
 def test_unknown_value_type_falls_back_to_text():
     field = schema.describe("mystery", {"value_type": "whatever_comes_next", "label": "Mystery"})
     assert field["control"] == "text"
+
+
+def test_a_confusing_setting_gets_a_note_after_its_description():
+    field = schema.describe("default_lighting", {"value_type": "choice", "description": "Set it"})
+    assert field["description"] == "Set it. " + schema.NOTES["default_lighting"]
+
+
+def test_a_plain_setting_keeps_its_description_alone():
+    assert schema.describe("polling_rate", {"description": "Set polling rate"})["description"] == (
+        "Set polling rate"
+    )
 
 
 def test_labels_get_a_capital():
@@ -110,6 +122,28 @@ def test_descriptor_is_json_safe():
 @pytest.fixture
 def device():
     return Device()
+
+
+def test_a_mouse_that_only_stores_a_wake_up_effect_is_flagged(device):
+    # the Aerox 3 Wireless keeps no colours, so the UI can offer to write them back
+    assert device.schema()["volatile"] is True
+
+
+def test_a_mouse_that_keeps_its_colours_is_not(monkeypatch):
+    monkeypatch.setenv("RIVALCFG_PROFILE", "1038:1720")
+    assert Device().schema()["volatile"] is False
+
+
+def test_volatile_colours_track_the_default_lighting_setting():
+    from rivalcfg import devices
+
+    for profile in devices.PROFILES.values():
+        volatile = schema.colors_are_volatile(profile)
+        assert volatile == ("default_lighting" in profile.get("settings", {}))
+        # anything we would rewrite has to actually have a plain colour zone
+        if volatile:
+            kinds = [i.get("value_type") for i in profile["settings"].values()]
+            assert "rgbcolor" in kinds, profile["name"]
 
 
 def test_status_reports_the_dry_run_mouse(device):
@@ -213,10 +247,69 @@ def test_a_missing_name_is_a_400(client):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize("body", [1, "polling_rate", [1, 2], None])
+def test_a_body_that_is_not_an_object_is_a_400(client, body):
+    response = client.post("/api/settings", json=body, headers={"X-Token": client.token})
+    assert response.status_code == 400
+    assert response.get_json()["kind"] == "request"
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("127.0.0.1", True),
+        ("127.0.0.53", True),
+        ("::1", True),
+        ("localhost", True),
+        ("0.0.0.0", False),
+        ("192.168.1.5", False),
+        ("evil.test", False),
+        ("", False),
+    ],
+)
+def test_is_loopback(name, expected):
+    assert is_loopback(name) is expected
+
+
+def test_any_loopback_address_is_served(client):
+    assert client.get("/api/status", headers={"Host": "127.0.0.5:8777"}).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("127.0.0.1", "http://localhost:8777/"),
+        ("0.0.0.0", "http://localhost:8777/"),
+        ("::", "http://localhost:8777/"),
+        ("::1", "http://localhost:8777/"),
+        ("192.168.1.5", "http://192.168.1.5:8777/"),
+        ("fd00::1", "http://[fd00::1]:8777/"),
+    ],
+)
+def test_browser_url(host, expected):
+    assert browser_url(host, 8777) == expected
+
+
 def test_security_headers_are_present(client):
     headers = client.get("/").headers
     assert "default-src 'self'" in headers["Content-Security-Policy"]
     assert headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_an_unplugged_mouse_with_no_battery_stops_reading_as_connected(monkeypatch):
+    # most profiles report no battery, so status has to check the bus itself
+    monkeypatch.setenv("RIVALCFG_PROFILE", "1038:1836")
+    device = Device()
+    assert device.status()["connected"] is True
+    monkeypatch.delenv("RIVALCFG_DRY")
+    monkeypatch.setattr("rivalcfg_gui.device.hid.enumerate", lambda *a: [])
+    assert device.status()["connected"] is False
+
+
+def test_a_wobbly_hidapi_does_not_make_us_cry_wolf(monkeypatch):
+    monkeypatch.delenv("RIVALCFG_DRY")
+    monkeypatch.setattr("rivalcfg_gui.device.hid.enumerate", lambda *a: 1 / 0)
+    assert on_bus(object()) is True
 
 
 def test_a_disconnected_mouse_reports_cleanly(monkeypatch):
@@ -400,6 +493,16 @@ def test_a_nonsense_log_level_in_the_environment_is_ignored(monkeypatch):
     assert parse_args([]).log_level == "info"
     monkeypatch.setenv("RIVALCFG_GUI_LOG_LEVEL", "DEBUG")
     assert parse_args([]).log_level == "debug"
+
+
+@pytest.mark.parametrize("value", ["0", "65536", "-1", "notaport"])
+def test_a_port_outside_the_range_is_refused(value):
+    with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+        port_number(value)
+
+
+def test_a_sensible_port_is_accepted():
+    assert port_number("8777") == 8777
 
 
 def test_demo_takes_an_optional_device():
