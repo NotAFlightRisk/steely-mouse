@@ -129,7 +129,7 @@ jobs:
           always() && needs.prepare.outputs.public == 'true'
           && hashFiles(format('trivy-{0}.sarif', matrix.arch)) != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4.37.3
+        uses: github/codeql-action/upload-sarif@v4.37.8
         with:
           sarif_file: trivy-${{ matrix.arch }}.sarif
           category: trivy-${{ matrix.arch }}
