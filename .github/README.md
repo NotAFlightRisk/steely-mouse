@@ -18,7 +18,7 @@ There are several options for running...
 
 ### Download
 
-Grab the binary for your system from the [latest release](https://github.com/Lissy93/rivalcfg-gui/releases/latest),
+Grab the binary for your system from the [latest release](https://github.com/Lissy93/steely-mouse/releases/latest),
 make it executable and run it.
 
 ```bash
@@ -34,7 +34,7 @@ chmod +x rivalcfg-gui-1.0.0-linux-x86_64
 ### Nix
 
 ```bash
-nix run github:lissy93/rivalcfg-gui
+nix run github:lissy93/steely-mouse
 ```
 
 > Runs it without installing anything. You still need the udev rules from somewhere, so
@@ -43,7 +43,7 @@ nix run github:lissy93/rivalcfg-gui
 ### NixOS
 
 ```nix
-inputs.rivalcfg-gui.url = "github:lissy93/rivalcfg-gui";
+inputs.rivalcfg-gui.url = "github:lissy93/steely-mouse";
 
 imports = [ inputs.rivalcfg-gui.nixosModules.default ];
 programs.rivalcfg-gui.enable = true;
@@ -82,7 +82,7 @@ rivalcfg-gui
 ### Docker
 
 ```bash
-docker run --rm -p 8777:8777 --device /dev/hidraw0 ghcr.io/lissy93/rivalcfg-gui
+docker run --rm -p 8777:8777 --device /dev/hidraw0 ghcr.io/lissy93/steely-mouse
 ```
 
 > Then open [localhost:8777](http://localhost:8777). You have to pass the right hidraw node
@@ -93,15 +93,15 @@ The image also carries the udev rules, so you can install them without putting r
 the host:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/lissy93/rivalcfg-gui \
+docker run --rm --entrypoint cat ghcr.io/lissy93/steely-mouse \
   /udev/99-steelseries-rival.rules | sudo tee /etc/udev/rules.d/99-steelseries-rival.rules
 ```
 
 ### Build from Source
 
 ```bash
-git clone git@github.com:Lissy93/rivalcfg-gui.git && \
-cd rivalcfg-gui && \
+git clone git@github.com:Lissy93/steely-mouse.git && \
+cd steely-mouse && \
 pip install . && \
 rivalcfg-gui
 ```
@@ -174,5 +174,5 @@ The one syntax with no widget is per-axis DPI, which falls back to a text box
 
 ## License
 
-> _**[Lissy93/rivalcfg-gui](https://github.com/Lissy93/rivalcfg-gui)** is licensed under [MIT](https://github.com/Lissy93/rivalcfg-gui/blob/HEAD/LICENSE) © [Alicia Sykes](https://aliciasykes.com) 2026._<br>
+> _**[Lissy93/steely-mouse](https://github.com/Lissy93/steely-mouse)** is licensed under [MIT](https://github.com/Lissy93/steely-mouse/blob/HEAD/LICENSE) © [Alicia Sykes](https://aliciasykes.com) 2026._<br>
 > <sup align="right">For information, see <a href="https://tldrlegal.com/license/mit-license">TLDR Legal > MIT</a></sup>

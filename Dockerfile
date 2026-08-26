@@ -9,7 +9,8 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PATH="/venv/bin:$PATH"
 RUN python -m venv /venv
 
 WORKDIR /src
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml LICENSE ./
+COPY .github/README.md ./.github/
 COPY rivalcfg_gui ./rivalcfg_gui
 RUN pip install . \
  && mkdir /udev \
@@ -24,7 +25,7 @@ ARG CREATED=unknown
 
 LABEL org.opencontainers.image.title="rivalcfg-gui" \
       org.opencontainers.image.description="A web GUI for configuring SteelSeries mice" \
-      org.opencontainers.image.source="https://github.com/Lissy93/rivalcfg-gui" \
+      org.opencontainers.image.source="https://github.com/Lissy93/steely-mouse" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \

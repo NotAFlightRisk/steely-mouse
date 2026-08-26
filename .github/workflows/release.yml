@@ -80,7 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x "$BINARY"
-          test "$("$BINARY" --version)" = "$TAG"
+          test "$("$BINARY" --version | tr -d '\r')" = "$TAG"
 
       - name: Check it serves
         if: runner.os != 'Windows'
@@ -144,7 +144,7 @@ jobs:
         run: |
           pip install build twine
           python -m build
-          twine check dist/*
+          twine check --strict dist/*
 
       - name: Collect the binaries
         uses: actions/download-artifact@v8
@@ -161,6 +161,7 @@ jobs:
 
       - name: Attest the build provenance
         id: attest
+        if: github.event.repository.private == false
         continue-on-error: true
         uses: actions/attest-build-provenance@v4
         with:
@@ -209,7 +210,7 @@ jobs:
             [ -n "$PREV_TAG" ] && echo "| Previous | \`${PREV_TAG}\` |"
             [ -n "$ATTEST_URL" ] \
               && echo "| Provenance | ✅ [View](${ATTEST_URL}) |" \
-              || echo "| Provenance | ⚠️ Not attested |"
+              || echo "| Provenance | ⏭️ Public repos only |"
             [ -n "$RELEASE_URL" ] \
               && echo "| Draft | ✅ [Review and publish](${RELEASE_URL}) |" \
               || echo "| Draft | ❌ Failed |"

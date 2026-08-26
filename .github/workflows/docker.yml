@@ -28,18 +28,23 @@ jobs:
   prepare:
     name: 🧭 Prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       image: ${{ steps.plan.outputs.image }}
       version: ${{ steps.plan.outputs.version }}
       created: ${{ steps.plan.outputs.created }}
+      public: ${{ steps.plan.outputs.public }}
     steps:
       - name: Resolve the image name and version
         id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          # attestations and code scanning are public-only on this plan
+          echo "public=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.private | not')" >> "$GITHUB_OUTPUT"
           if [ -n "$INPUT_TAG" ]; then
             VERSION="$INPUT_TAG"
           elif [ "$GITHUB_EVENT_NAME" = push ]; then
@@ -87,7 +92,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build for scanning
         uses: docker/build-push-action@v7
@@ -120,7 +125,9 @@ jobs:
           timeout: 10m
 
       - name: Upload the scan results
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.arch)) != ''
+        if: >-
+          always() && needs.prepare.outputs.public == 'true'
+          && hashFiles(format('trivy-{0}.sarif', matrix.arch)) != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4.37.3
         with:
@@ -187,7 +194,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
         if: env.HAS_HUB == 'true'
@@ -202,7 +209,7 @@ jobs:
         with:
           images: |
             ${{ env.IMAGE }}
-            ${{ env.HAS_HUB == 'true' && format('{0}/rivalcfg-gui', vars.DOCKER_USERNAME) || '' }}
+            ${{ env.HAS_HUB == 'true' && format('{0}/steely-mouse', vars.DOCKER_USERNAME) || '' }}
           tags: |
             type=raw,value=latest,enable=${{ inputs.tag == '' }}
             type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }},enable=${{ env.IS_TAGGED }}
@@ -227,6 +234,7 @@ jobs:
 
       - name: Generate an SBOM
         id: sbom
+        if: needs.prepare.outputs.public == 'true'
         continue-on-error: true
         uses: anchore/sbom-action@v0.24.0
         with:
@@ -249,6 +257,7 @@ jobs:
 
       - name: Attest the build provenance
         id: attest_prov
+        if: needs.prepare.outputs.public == 'true'
         continue-on-error: true
         uses: actions/attest-build-provenance@v4
         with:
@@ -260,6 +269,7 @@ jobs:
       - name: Job summary
         if: always()
         env:
+          IS_PUBLIC: ${{ needs.prepare.outputs.public }}
           TAGS_JSON: ${{ steps.meta.outputs.json }}
           MANIFEST: ${{ steps.manifest.outputs.digest }}
           SBOM_URL: ${{ steps.attest_sbom.outputs.attestation-url }}
@@ -275,6 +285,7 @@ jobs:
             jq -r '.tags[]?' <<< "${TAGS_JSON:-{\}}"
             echo '```'
             [ "$HAS_HUB" = "true" ] || echo "> Docker Hub is not configured, so this went to GHCR only."
+            [ "$IS_PUBLIC" = "true" ] || echo "> Private repo, so attestations and the Trivy upload were skipped."
             [ -n "$SBOM_URL" ] && echo "- ✅ SBOM attested ([view]($SBOM_URL))"
             [ -n "$PROV_URL" ] && echo "- ✅ Provenance attested ([view]($PROV_URL))"
             true
