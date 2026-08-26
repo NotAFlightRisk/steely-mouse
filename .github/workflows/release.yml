@@ -144,7 +144,7 @@ jobs:
         run: |
           pip install build twine
           python -m build
-          twine check dist/*
+          twine check --strict dist/*
 
       - name: Collect the binaries
         uses: actions/download-artifact@v8

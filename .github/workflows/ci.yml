@@ -42,6 +42,7 @@ jobs:
               - '**/*.py'
               - 'pyproject.toml'
               - 'rivalcfg-gui.spec'
+              - '.github/README.md'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
@@ -145,7 +146,7 @@ jobs:
         run: |
           pip install build twine
           python -m build
-          twine check dist/*
+          twine check --strict dist/*
       - name: Install the wheel on its own
         run: |
           python -m venv /tmp/check
