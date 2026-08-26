@@ -1,6 +1,6 @@
 services:
   rivalcfg-gui:
-    image: ghcr.io/lissy93/rivalcfg-gui
+    image: ghcr.io/lissy93/steely-mouse
     container_name: rivalcfg-gui
     restart: unless-stopped
     ports:
