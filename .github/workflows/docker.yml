@@ -236,7 +236,7 @@ jobs:
         id: sbom
         if: needs.prepare.outputs.public == 'true'
         continue-on-error: true
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: ${{ steps.manifest.outputs.primary }}
           format: spdx-json
