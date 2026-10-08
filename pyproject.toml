@@ -16,7 +16,7 @@ dependencies = ["flask>=3.0", "rivalcfg>=4.15"]
 rivalcfg-gui = "rivalcfg_gui.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/Lissy93/steely-mouse"
+Homepage = "https://github.com/NotAFlightRisk/steely-mouse"
 
 [tool.setuptools]
 packages = ["rivalcfg_gui"]

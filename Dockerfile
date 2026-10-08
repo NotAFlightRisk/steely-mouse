@@ -24,9 +24,9 @@ ARG VERSION=0.0.0
 ARG REVISION=unknown
 ARG CREATED=unknown
 
-LABEL org.opencontainers.image.title="rivalcfg-gui" \
+LABEL org.opencontainers.image.title="steely-mouse" \
       org.opencontainers.image.description="A web GUI for configuring SteelSeries mice" \
-      org.opencontainers.image.source="https://github.com/Lissy93/steely-mouse" \
+      org.opencontainers.image.source="https://github.com/NotAFlightRisk/steely-mouse" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
