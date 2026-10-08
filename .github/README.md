@@ -1,133 +1,126 @@
 <h1 align="center">Steely Mouse</h1>
 <p align="center">
-<i>GUI configurator for SteelSeries mice using <a href="https://github.com/flozz/rivalcfg"><code>rivalcfg</code></a></i>
+<i>A web GUI for configuring SteelSeries mice, built on <a href="https://github.com/flozz/rivalcfg"><code>rivalcfg</code></a></i>
 <br />
-<img src="https://raw.githubusercontent.com/lissy93/steely-mouse/refs/heads/main/rivalcfg_gui/static/icon.svg" width="96" /><br />
-<br />
+<img src="https://raw.githubusercontent.com/NotAFlightRisk/steely-mouse/main/rivalcfg_gui/static/icon.svg" width="96" />
 </p>
 
-## Getting Started
+<details>
+  <summary>Contents</summary>
 
-There are several options for running...
+- [About](#about)
+- [Install](#install)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Credits](#credits)
+
+</details>
+
+## About
+
+Change your mouse's DPI stages, polling rate, lighting (gradients too), button mapping and sleep timers from a browser tab. It runs on your own machine and talks to the mouse over USB through rivalcfg, so it works with any of the 61 models rivalcfg supports.
+
+There's nothing hardcoded per mouse. The controls are drawn from each device's rivalcfg profile, so a newly supported mouse usually just works.
+
+<p align="center">
+<img width="800" src="https://raw.githubusercontent.com/NotAFlightRisk/steely-mouse/main/.github/screenshot.png" alt="The settings page for an Aerox 3 Wireless, with DPI stages, polling rate and lighting controls" />
+</p>
+
+---
+
+## Install
 
 > [!NOTE]
-> On Linux, whichever you pick, the mouse needs udev rules installed and your user in the `input` group.
-> Without them the device nodes are root only and nothing can be opened. The
-> NixOS module does both; everywhere else it's `sudo rivalcfg --update-udev`, once.
-> macOS and Windows need no setup.
+> On Linux, the mouse belongs to root until udev rules are installed. `sudo rivalcfg --update-udev` sorts it, once (NixOS is different, see below). macOS and Windows need no setup.
 
 ### Download
 
-Grab the binary for your system from the [latest release](https://github.com/Lissy93/steely-mouse/releases/latest),
-make it executable and run it.
+Grab the binary for your system from the [latest release](https://github.com/NotAFlightRisk/steely-mouse/releases/latest), make it executable and run it.
 
 ```bash
 chmod +x rivalcfg-gui-1.0.0-linux-x86_64
 ./rivalcfg-gui-1.0.0-linux-x86_64
 ```
 
-> Self-contained, with Python and the device profiles inside, so there is nothing to
-> install. Built for Linux and macOS on both Intel and ARM, and for Windows on x86_64. Each
-> release also carries `SHA256SUMS` and a build provenance attestation, if you want to check
-> what you downloaded.
+There's one for Linux and macOS on both Intel and ARM, and one for Windows. Python and the device profiles are baked in, so there's nothing else to install. Each release also has a `SHA256SUMS` and a build provenance attestation, if you want to check what you downloaded.
+
+macOS will refuse to open it the first time, as it isn't signed. Run `xattr -d com.apple.quarantine rivalcfg-gui-*` and try again.
 
 ### Nix
 
 ```bash
-nix run github:lissy93/steely-mouse
+nix run github:NotAFlightRisk/steely-mouse
 ```
 
-> Runs it without installing anything. You still need the udev rules from somewhere, so
-> either use the module below or add `services.udev.packages = [ pkgs.rivalcfg ];` yourself.
+You'll still need the udev rules from somewhere, so use the module below or add `services.udev.packages = [ pkgs.rivalcfg ];` yourself.
 
 ### NixOS
 
 ```nix
-inputs.rivalcfg-gui.url = "github:lissy93/steely-mouse";
+inputs.steely-mouse.url = "github:NotAFlightRisk/steely-mouse";
 
-imports = [ inputs.rivalcfg-gui.nixosModules.default ];
+imports = [ inputs.steely-mouse.nixosModules.default ];
 programs.rivalcfg-gui.enable = true;
 users.users.<your-username>.extraGroups = [ "input" ];
 ```
 
-> Installs the app and the udev rules together. Rebuild, then log out and back in for the
-> group change to apply.
+That installs the app and the udev rules together. Rebuild, then log out and back in for the group change to apply. `rivalcfg --update-udev` won't work here, as `/etc/udev/rules.d` is read only.
 
-Don't want rivalcfg in your closure at all? Write the rules yourself. `1038` is SteelSeries,
-so these two lines cover every mouse it makes. Both subsystems matter, because which one
-hidapi opens depends on whether it was built against hidraw or libusb.
-
-```nix
-services.udev.extraRules = ''
-  SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", MODE="0660", GROUP="input"
-  SUBSYSTEM=="usb", ATTRS{idVendor}=="1038", MODE="0660", GROUP="input"
-'';
-users.users.<your-username>.extraGroups = [ "input" ];
-```
-
-> `sudo rivalcfg --update-udev` is the answer on most distros, but not here. NixOS symlinks
-> `/etc/udev/rules.d` into the store, so there's nothing for it to write to.
-
-### Pip
+### pip
 
 ```bash
-pip install rivalcfg-gui
+pipx install git+https://github.com/NotAFlightRisk/steely-mouse
 sudo rivalcfg --update-udev
 rivalcfg-gui
 ```
 
-> Works with `pipx install rivalcfg-gui` or `uv tool install rivalcfg-gui` too, which keep
-> it out of your system Python.
+Plain `pip install` or `uv tool install` take the same URL. You'll need Python 3.10 or newer.
 
 ### Docker
 
 ```bash
-docker run --rm -p 8777:8777 --device /dev/hidraw0 ghcr.io/lissy93/steely-mouse
+docker run --rm -p 127.0.0.1:8777:8777 --device /dev/hidraw0 ghcr.io/notaflightrisk/steely-mouse
 ```
 
-> Then open [localhost:8777](http://localhost:8777). You have to pass the right hidraw node
-> and the number shifts between reboots, so run `ls -l /dev/hidraw*` first. There's a
-> `docker-compose.yml` in the repo if you'd rather not retype that every time.
+Then open [localhost:8777](http://localhost:8777). The hidraw number moves around between reboots, so check `ls -l /dev/hidraw*` first. There's a [`docker/compose.yml`](https://github.com/NotAFlightRisk/steely-mouse/blob/main/docker/compose.yml) if you'd rather not retype that every time.
 
-The image also carries the udev rules, so you can install them without putting rivalcfg on
-the host:
+The image carries the udev rules too, so you can install them without putting rivalcfg on the host:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/lissy93/steely-mouse \
+docker run --rm --entrypoint cat ghcr.io/notaflightrisk/steely-mouse \
   /udev/99-steelseries-rival.rules | sudo tee /etc/udev/rules.d/99-steelseries-rival.rules
 ```
 
-### Build from Source
+### Build from source
 
 ```bash
-git clone git@github.com:Lissy93/steely-mouse.git && \
-cd steely-mouse && \
-pip install . && \
+git clone git@github.com:NotAFlightRisk/steely-mouse.git
+cd steely-mouse
+pip install .
 rivalcfg-gui
 ```
 
-### No Mouse to Hand
-
-```bash
-rivalcfg-gui --demo
-```
-
-> Runs against a fake device, writing nothing to hardware. Useful for hacking on the UI, or
-> just for a look before you commit. Pass a different id, like `--demo 1038:1702`, to see
-> what another mouse would look like.
-
 <details>
+<summary>Not sure which to pick?</summary>
 
-<summary><h4>Not sure which method to choose?</h4></summary>
-
-- The download is the least fuss if you just want to use it. No Python, no package manager
-- On NixOS, use the module. It's the only one that sorts out permissions for you
-- `pipx` or `uv` is the tidiest option everywhere else, since it isolates the install
-- Plain `pip` is fine if you don't mind it landing in your user site-packages
+- The download is the least fuss, no Python or package manager needed
+- On NixOS, use the module, it's the only one that sorts the permissions out for you
+- `pipx` is the tidiest option everywhere else, as it keeps it out of your system Python
 - Docker works, but passing USB devices into a container is more hassle than it saves here
-- Build from source if you're changing the code, or your platform has no wheel for `hidapi`
+- Build from source if you're changing the code, or there's no `hidapi` wheel for your platform
 
 </details>
+
+---
+
+## Usage
+
+Run `rivalcfg-gui` and it'll open [localhost:8777](http://localhost:8777) in your browser.
+
+Changes apply as soon as you make them. "Save to mouse" writes them to onboard memory so they survive a reboot, though some of the newer mice (Aerox, Prime, Rival 5 and friends) forget their colours whenever they nod off. Those get a "Reapply colours on wake" switch.
+
+No mouse to hand? `rivalcfg-gui --demo` runs against a fake one and touches no hardware. Pass an id like `--demo 1038:1702` to see what a different mouse would look like.
 
 ---
 
@@ -141,38 +134,44 @@ rivalcfg-gui --demo
 | `--no-browser` | | off | Don't open a browser on start |
 | `--demo [VID:PID]` | | off | Fake device, touches no hardware |
 
-<sup>
-Precedence is flags, then the environment, then these defaults.
-</sup>
+Flags win over the environment, which wins over the defaults. Anyone who can reach the port can retune your mouse, so keep it on loopback unless you really mean it.
 
 ---
 
 ## Development
 
-```sh
-nix develop
+```bash
+git clone git@github.com:NotAFlightRisk/steely-mouse.git
+cd steely-mouse
+pip install -e . pytest ruff
 python -m rivalcfg_gui --demo
-pytest -q
 ```
 
-The `schema.py` is rivalcfg's device profiles as plain dicts that carry
-their own labels, value types, ranges and defaults, so the frontend renders controls from
-that description instead of hardcoding anything per device. Adding support for a new mouse
-usually means adding nothing at all.
+Then `pytest -q` for the tests and `ruff check .` for the lint. On Nix, `nix develop` drops you in a shell with the dependencies and pytest instead of the `pip install`.
 
-The one syntax with no widget is per-axis DPI, which falls back to a text box
+`schema.py` turns rivalcfg's device profiles into plain descriptions (labels, value types, ranges and defaults), and the frontend draws its controls from those. The one setting with no proper widget is per-axis DPI, which falls back to a text box.
 
 ---
 
-## Screenshot
+## Credits
 
-<p align="center">
-<img width="800" src="https://github.com/lissy93/steely-mouse/blob/main/.github/screenshot.png?raw=true" />
+##### Contributors
+
+[![contributors badge](https://readme-contribs.as93.net/contributors/NotAFlightRisk/steely-mouse?shape=squircle)](https://github.com/NotAFlightRisk/steely-mouse/graphs/contributors)
+
+---
+
+<!-- License + Copyright -->
+<p  align="center">
+  <a href="https://github.com/NotAFlightRisk"><img width="64" src="https://pixelflare.cc/iain/gif/penguin-dance.gif" /></a><br>
+  <sup>
+    <i>Licensed under <a href="https://github.com/NotAFlightRisk/steely-mouse/blob/main/LICENSE">MIT</a>, © <a href="https://peng.ly">NotAFlightRisk</a> 2026</i>
+  </sup>
 </p>
 
----
-
-## License
-
-> _**[Lissy93/steely-mouse](https://github.com/Lissy93/steely-mouse)** is licensed under [MIT](https://github.com/Lissy93/steely-mouse/blob/HEAD/LICENSE) © [Alicia Sykes](https://aliciasykes.com) 2026._<br>
-> <sup align="right">For information, see <a href="https://tldrlegal.com/license/mit-license">TLDR Legal > MIT</a></sup>
+<!--
+oooh, hello there! hope you're having a nice day :)
+   |\__      |\___
+ (:> __)X  (:o ___(
+   |/        |/
+-->
