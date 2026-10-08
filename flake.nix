@@ -10,8 +10,7 @@
 
       version = "0.0.0+${self.shortRev or "dirty"}";
 
-      # nixpkgs ships rivalcfg as an application, so lift it back into a module
-      # that python3.withPackages and buildPythonApplication can consume.
+      # nixpkgs ships rivalcfg as an app, so lift it back into a python module
       overlay = final: prev: {
         rivalcfg-gui = final.python3Packages.buildPythonApplication {
           pname = "rivalcfg-gui";
@@ -63,8 +62,7 @@
           };
         });
 
-      # Installs the app and the udev rules that let a normal user talk to the
-      # mouse. You still need to be in the "input" group.
+      # the app plus udev rules, though you still need to be in the "input" group
       nixosModules.default = { config, lib, pkgs, ... }:
         let cfg = config.programs.rivalcfg-gui;
         in {

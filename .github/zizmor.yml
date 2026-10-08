@@ -1,5 +1,4 @@
-# Actions are pinned to release tags rather than commit hashes, to match the
-# rest of the repos here and keep the workflows readable.
+# tags, not hashes, so the workflows stay readable
 rules:
   unpinned-uses:
     config:

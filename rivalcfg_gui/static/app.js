@@ -290,8 +290,7 @@ function buildColor(field, id) {
   return [toggle, ...pair.nodes];
 }
 
-// These settings take a plain colour or a looping gradient, so the mode switch
-// picks which, and the preview sweep shows the cycle you've dialled in.
+// a plain colour or a looping gradient, with a sweep previewing the cycle
 function buildGradient(field, id) {
   const start = values[field.name] ?? field.default ?? {};
   const seed = field.default?.stops?.length ? field.default.stops : [{ pos: 0, color: "#ffffff" }];

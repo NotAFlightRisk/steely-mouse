@@ -31,14 +31,7 @@ def on_bus(mouse):
 
 
 class Device:
-    """Owns the HID connection.
-
-    rivalcfg's Mouse wraps an open hidapi handle that isn't thread safe, and the
-    mouse leaves the bus whenever it sleeps or switches between wired and
-    wireless (the product id flips between 0x183a and 0x1838). So we connect
-    lazily behind a lock and drop the handle the moment anything fails, which
-    makes the next request re-detect instead of talking to a dead device.
-    """
+    """Owns the HID handle, and drops it on any failure so the next call re-detects."""
 
     def __init__(self):
         self._lock = threading.RLock()
@@ -101,8 +94,7 @@ class Device:
 
     @staticmethod
     def _firmware(mouse):
-        # Not every profile implements the firmware command, and a sleeping
-        # mouse won't answer it. It's decoration, so never let it break status.
+        # not every profile has it and a sleeping mouse won't answer, so it's garnish
         try:
             return mouse.firmware_version
         except Exception:
