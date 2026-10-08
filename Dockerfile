@@ -1,8 +1,8 @@
-FROM python:3.13-slim AS build
+FROM python:3.15-slim AS build
 
-# wheels cover the common arches, the toolchain is there for the ones they don't
+# hidapi only ships wheels for some pythons, so keep what it needs to build from source
 RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc libhidapi-dev libudev-dev \
+ && apt-get install -y --no-install-recommends gcc libc6-dev pkg-config libudev-dev libusb-1.0-0-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PATH="/venv/bin:$PATH"
@@ -17,7 +17,7 @@ RUN pip install . \
  && rivalcfg --print-udev > /udev/99-steelseries-rival.rules
 
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 ARG VERSION=dev
 ARG REVISION=unknown
@@ -31,9 +31,8 @@ LABEL org.opencontainers.image.title="rivalcfg-gui" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
 
-# hidapi reaches the mouse through hidraw, so its shared libs have to be here
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libhidapi-hidraw0 libhidapi-libusb0 \
+ && apt-get install -y --no-install-recommends libudev1 libusb-1.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /venv /venv
