@@ -59,9 +59,9 @@
     --text: #14171d;
     --muted: #5b6472;
     --faint: #616a77;
-    --accent: #0f6fdb;
+    --accent: #0b65c8;
     --accent-ink: #fff;
-    --accent-dim: rgb(15 111 219 / 0.09);
+    --accent-dim: rgb(11 101 200 / 0.09);
     --ok: #14804f;
     --warn: #a76c07;
     --danger: #cf3b3b;
@@ -128,7 +128,7 @@ input { caret-color: var(--accent); }
 }
 .rail__foot { margin-block-start: auto; display: grid; gap: var(--s2); }
 .rail__note { font-size: var(--t-xs); line-height: 1.5; color: var(--faint); }
-.rail__ver { font-size: var(--t-xs); color: var(--faint); opacity: 0.75; }
+.rail__ver { font-size: var(--t-xs); color: var(--faint); }
 
 /* ---- device + battery ------------------------------------------------ */
 .device { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s3); }
