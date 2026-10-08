@@ -51,6 +51,9 @@ def parse_args(argv=None):
         default=level if level in logs.LEVELS else "info",
         help="default: %(default)s",
     )
+    parser.add_argument(
+        "--print-udev", action="store_true", help="print the Linux udev rules and exit"
+    )
     parser.add_argument("--version", action="version", version=__version__)
     return parser.parse_args(argv)
 
@@ -101,6 +104,11 @@ def serve(args):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.print_udev:
+        from rivalcfg.udev import generate_rules
+
+        print(generate_rules())
+        return 0
     if args.demo:
         os.environ["RIVALCFG_DRY"] = "1"
         os.environ["RIVALCFG_PROFILE"] = args.demo

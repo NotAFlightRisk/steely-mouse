@@ -10,7 +10,7 @@ os.environ["RIVALCFG_DRY"] = "1"
 os.environ["RIVALCFG_PROFILE"] = "1038:1838"
 
 from rivalcfg_gui import errors, schema
-from rivalcfg_gui.__main__ import parse_args, port_number
+from rivalcfg_gui.__main__ import main, parse_args, port_number
 from rivalcfg_gui.device import Device, on_bus
 from rivalcfg_gui.errors import AppError
 from rivalcfg_gui.server import browser_url, create_app, hostname, is_loopback
@@ -330,7 +330,32 @@ def test_a_failed_open_asks_for_the_udev_rules(monkeypatch):
     problem = errors.translate(OSError("open failed"))
     assert problem.kind == "permission"
     assert "/dev/hidraw6" in problem.hint
-    assert problem.fix == errors.UDEV_FIX
+    assert problem.fix == errors.udev_fix()
+
+
+RULES = "| sudo tee /etc/udev/rules.d/99-steelseries-rival.rules > /dev/null"
+
+
+def test_the_udev_fix_uses_the_command_on_your_path(monkeypatch):
+    monkeypatch.setattr(errors.shutil, "which", lambda name: "/home/me/.local/bin/" + name)
+    assert errors.udev_fix() == "rivalcfg-gui --print-udev " + RULES
+
+
+def test_off_the_path_the_udev_fix_runs_whatever_python_we_are(monkeypatch):
+    monkeypatch.setattr(errors.shutil, "which", lambda name: None)
+    monkeypatch.setattr(errors.sys, "executable", "/opt/my env/python")
+    assert errors.udev_fix() == "'/opt/my env/python' -m rivalcfg_gui --print-udev " + RULES
+
+
+def test_a_frozen_binary_points_the_udev_fix_at_itself(monkeypatch):
+    monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(errors.sys, "executable", "/home/me/rivalcfg-gui-1.0.0-linux-x86_64")
+    assert errors.udev_fix().startswith("/home/me/rivalcfg-gui-1.0.0-linux-x86_64 --print-udev |")
+
+
+def test_print_udev_prints_rules_for_steelseries_mice(capsys):
+    assert main(["--print-udev"]) == 0
+    assert 'ATTRS{idVendor}=="1038"' in capsys.readouterr().out
 
 
 def test_nixos_gets_the_config_line_not_a_command(monkeypatch):
@@ -393,7 +418,7 @@ def test_the_ui_gets_a_hint_and_a_fix(client, monkeypatch):
     )
     body = client.get("/api/status").get_json()
     assert body["kind"] == "permission"
-    assert body["fix"] == errors.UDEV_FIX
+    assert body["fix"] == errors.udev_fix()
     assert body["hint"].startswith("/dev/hidraw6 belongs to root")
 
 
