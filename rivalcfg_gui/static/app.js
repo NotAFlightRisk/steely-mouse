@@ -850,7 +850,9 @@ function wireActions() {
   const reset = $("reset");
   const label = reset.querySelector("span");
   let armed = false;
+  let timer;
   const disarm = () => {
+    clearTimeout(timer);
     armed = false;
     reset.classList.remove("btn--danger");
     label.textContent = "Reset defaults";
@@ -861,7 +863,7 @@ function wireActions() {
       armed = true;
       reset.classList.add("btn--danger");
       label.textContent = "Tap again to confirm";
-      setTimeout(disarm, 4000);
+      timer = setTimeout(disarm, 4000);
       return;
     }
     disarm();
