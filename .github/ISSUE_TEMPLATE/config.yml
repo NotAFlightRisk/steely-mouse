@@ -1,0 +1,22 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 🔒 Report a Security Vulnerability
+    url: https://github.com/NotAFlightRisk/steely-mouse/security/policy
+    about: Never report vulnerabilities in a public issue. Read our security policy and disclose privately.
+
+  - name: 📖 Documentation
+    url: https://github.com/NotAFlightRisk/steely-mouse#readme
+    about: Install and configuration docs. Worth checking before filing.
+
+  - name: 🙋 Support & Troubleshooting
+    url: https://github.com/NotAFlightRisk/steely-mouse/blob/main/.github/SUPPORT.md
+    about: Not sure where something belongs? This explains where to ask what.
+
+  - name: 💬 Questions & Ideas
+    url: https://github.com/NotAFlightRisk/steely-mouse/discussions
+    about: Ask a question, share an idea, or show what you've built.
+
+  - name: 🛠️ Contributing Guide
+    url: https://github.com/NotAFlightRisk/steely-mouse/blob/main/.github/CONTRIBUTING.md
+    about: Want to fix it yourself? Start here for setup and the PR workflow.
