@@ -14,3 +14,8 @@ build/
 
 # upstream rivalcfg checkout kept here for reference
 /rivalcfg/
+
+# working notes, never committed
+iains-notes/
+rivalcfg_gui/_version.py
+.env

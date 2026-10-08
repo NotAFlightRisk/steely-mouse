@@ -57,9 +57,9 @@ jobs:
       - name: Freeze it
         env:
           EXT: ${{ matrix.ext }}
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          sed -i.bak "s/^__version__ = .*/__version__ = \"$TAG\"/" rivalcfg_gui/__init__.py
           pip install . pyinstaller
           pyinstaller --clean --noconfirm rivalcfg-gui.spec
           mv "dist/rivalcfg-gui${EXT}" "$BINARY"
@@ -114,9 +114,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Build the Python distributions
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          sed -i "s/^__version__ = .*/__version__ = \"$TAG\"/" rivalcfg_gui/__init__.py
           pip install build twine
           python -m build
           twine check --strict dist/*

@@ -8,9 +8,7 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = nixpkgs.lib.genAttrs systems;
 
-      version = builtins.elemAt
-        (builtins.match ''.*__version__ = "([^"]+)".*''
-          (builtins.readFile ./rivalcfg_gui/__init__.py)) 0;
+      version = "0.0.0+${self.shortRev or "dirty"}";
 
       # nixpkgs ships rivalcfg as an application, so lift it back into a module
       # that python3.withPackages and buildPythonApplication can consume.
@@ -20,7 +18,7 @@
           inherit version;
           src = ./.;
           pyproject = true;
-          build-system = [ final.python3Packages.setuptools ];
+          build-system = with final.python3Packages; [ setuptools setuptools-scm ];
           dependencies = [
             final.python3Packages.flask
             (final.python3Packages.toPythonModule final.rivalcfg)
