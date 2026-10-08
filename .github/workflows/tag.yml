@@ -1,203 +1,89 @@
-# Bumps the version and tags it whenever a PR with code in it lands on main.
-# Tags are plain semver, no v prefix. A x.y.0 tag means a release.
-#
-# GITHUB_TOKEN pushes can't set off another workflow, so the follow-up builds are
-# dispatched by hand. A BOT_TOKEN push triggers them on its own, so we don't.
 name: 🔖 Tag
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to tag (e.g. 1.2.0). Blank bumps the patch.'
-        required: false
-        type: string
-  # Only fires on an already-reviewed merge, and never checks out the PR's code.
-  pull_request_target: # zizmor: ignore[dangerous-triggers]
-    types: [closed]
-    branches: [main]
+      bump:
+        description: Which part to bump
+        type: choice
+        default: patch
+        options: [patch, minor, major]
+
+permissions:
+  contents: read
 
 concurrency:
   group: tag
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
-env:
-  IS_MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
-  VERSION_FILE: rivalcfg_gui/__init__.py
-
 jobs:
   tag:
-    name: 🔖 Bump and Tag
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    name: 🔖 Next tag
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+      feature: ${{ steps.next.outputs.feature }}
+    steps:
+      - uses: actions/checkout@v7 # zizmor: ignore[artipacked] this job pushes the tag
+        with:
+          fetch-depth: 0
+      - name: Work out the next version
+        id: next
+        env:
+          PART: ${{ inputs.bump || 'patch' }}
+        run: |
+          latest=$(git tag --list '[0-9]*' | sort -V | tail -n1)
+          IFS=. read -r major minor patch <<< "${latest:-0.1.0}"
+          case "$PART" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            *)     patch=$((patch + 1)) ;;
+          esac
+          tag="$major.$minor.$patch"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "feature=$([ "$PART" = patch ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+          echo "### $tag" >> "$GITHUB_STEP_SUMMARY"
+      - name: Push it
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+
+  release:
+    name: 🚀 Release
+    needs: tag
+    if: needs.tag.outputs.feature == 'true'
     permissions:
       contents: write
       actions: write
-      pull-requests: read
-    env:
-      HAS_BOT: ${{ secrets.BOT_TOKEN != '' }}
-    steps:
-      - name: Validate the manual input
-        if: env.IS_MANUAL == 'true'
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -n "$INPUT_VERSION" ] && ! printf '%s' "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::'$INPUT_VERSION' isn't semver, try something like 1.2.0"
-            exit 1
-          fi
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository] actionlint can't read $/ yet
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
 
-      - name: Checkout
-        uses: actions/checkout@v7 # zizmor: ignore[artipacked]
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: Configure git
-        env:
-          BOT_NAME: ${{ vars.BOT_NAME || 'github-actions[bot]' }}
-          BOT_EMAIL: ${{ vars.BOT_EMAIL || '41898282+github-actions[bot]@users.noreply.github.com' }}
-        run: |
-          git config user.name "$BOT_NAME"
-          git config user.email "$BOT_EMAIL"
-
-      - name: Work out the next version
-        id: plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_VERSION: ${{ inputs.version }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          git fetch --tags --force
-          CURRENT=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$VERSION_FILE")
-
-          stop() { echo "$1"; { echo "skip=true"; echo "reason=$1"; } >> "$GITHUB_OUTPUT"; exit 0; }
-
-          # ask for the PR's own files, since main may have moved on since the merge
-          if [ "$IS_MANUAL" = "true" ]; then
-            CHANGED=manual
-          else
-            CHANGED=$(gh pr view "$PR_NUMBER" --json files -q '.files[].path' \
-              | grep -E '^(rivalcfg_gui/|tests/|pyproject\.toml|flake\.(nix|lock)|Dockerfile)' || true)
-          fi
-          [ -n "$CHANGED" ] || stop "Nothing to tag, this merge didn't touch any code."
-
-          if [ "$IS_MANUAL" = "true" ] && [ -n "$INPUT_VERSION" ]; then
-            NEXT="$INPUT_VERSION"
-          elif printf '%s\n' "$CHANGED" | grep -qFx "$VERSION_FILE"; then
-            echo "the PR bumped it already"
-            NEXT="$CURRENT"
-          else
-            IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
-            NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
-          fi
-
-          # nothing has been written yet, so this is the last safe place to back out
-          if git rev-parse -q --verify "refs/tags/$NEXT" >/dev/null; then
-            stop "Tag \`$NEXT\` already exists, so nothing was changed."
-          fi
-
-          echo "$CURRENT -> $NEXT"
-          {
-            echo "skip=false"
-            echo "current=$CURRENT"
-            echo "next=$NEXT"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Commit the bump
-        id: bump
-        if: steps.plan.outputs.skip == 'false' && steps.plan.outputs.current != steps.plan.outputs.next
-        env:
-          NEXT: ${{ steps.plan.outputs.next }}
-        run: |
-          set -euo pipefail
-          sed -i "s/^__version__ = .*/__version__ = \"$NEXT\"/" "$VERSION_FILE"
-          git add "$VERSION_FILE"
-          git commit -m "🔖 Bump version to $NEXT"
-          git push origin main
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Create and push the tag
-        id: tag
-        if: steps.plan.outputs.skip == 'false'
-        env:
-          NEXT: ${{ steps.plan.outputs.next }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
-        run: |
-          set -euo pipefail
-          {
-            printf 'rivalcfg-gui %s\n\n' "$NEXT"
-            if [ -n "$PR_NUMBER" ]; then
-              printf 'PR: #%s - %s\n' "$PR_NUMBER" "$PR_TITLE"
-            else
-              printf 'Tagged by hand by @%s\n' "$PR_AUTHOR"
-            fi
-          } > tag-message.txt
-          git tag -a "$NEXT" -F tag-message.txt
-          git push origin "$NEXT"
-          rm tag-message.txt
-          echo "result=created" >> "$GITHUB_OUTPUT"
-
-      # A BOT_TOKEN push already triggered these, dispatching again would double up.
-      - name: Start the follow-up builds
-        id: followup
-        if: steps.tag.outputs.result == 'created' && env.HAS_BOT != 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NEXT: ${{ steps.plan.outputs.next }}
-        run: |
-          set -euo pipefail
-          gh workflow run docker.yml -f tag="$NEXT"
-          echo "dispatched docker"
-          case "$NEXT" in
-            *.0) gh workflow run release.yml -f tag="$NEXT" && echo "dispatched release" ;;
-            *) echo "patch version, no release" ;;
-          esac
-
-      - name: Job summary
-        if: always()
-        env:
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-          SKIP: ${{ steps.plan.outputs.skip }}
-          REASON: ${{ steps.plan.outputs.reason }}
-          CURRENT: ${{ steps.plan.outputs.current }}
-          NEXT: ${{ steps.plan.outputs.next }}
-          BUMP_SHA: ${{ steps.bump.outputs.sha }}
-          TAG_RESULT: ${{ steps.tag.outputs.result }}
-          FOLLOWUP: ${{ steps.followup.outcome }}
-        run: |
-          {
-            echo "## Tag"
-            echo ""
-            if [ "$SKIP" != "false" ]; then
-              echo "${REASON:-Nothing was tagged.}"
-              exit 0
-            fi
-            echo "| Step | Result |"
-            echo "|------|--------|"
-            echo "| Version | \`${CURRENT}\` → \`${NEXT}\` |"
-            [ -n "$BUMP_SHA" ] \
-              && echo "| Bump commit | [\`${BUMP_SHA:0:7}\`](${REPO_URL}/commit/${BUMP_SHA}) |" \
-              || echo "| Bump commit | ⏭️ Already bumped in the PR |"
-            case "$TAG_RESULT" in
-              created) echo "| Tag | ✅ [\`${NEXT}\`](${REPO_URL}/releases/tag/${NEXT}) |" ;;
-              *) echo "| Tag | ❌ Failed |" ;;
-            esac
-            case "$FOLLOWUP" in
-              success) echo "| Follow-up builds | ✅ Dispatched |" ;;
-              failure) echo "| Follow-up builds | ⚠️ Couldn't dispatch |" ;;
-              *) [ "$HAS_BOT" = "true" ] \
-                   && echo "| Follow-up builds | ✅ Triggered by the tag push |" \
-                   || echo "| Follow-up builds | ⏭️ Skipped |" ;;
-            esac
-          } >> "$GITHUB_STEP_SUMMARY"
+  docker:
+    name: 🐋 Docker
+    needs: tag
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
+      attestations: write
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    uses: ./.github/workflows/docker.yml # zizmor: ignore[self-repository] actionlint can't read $/ yet
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

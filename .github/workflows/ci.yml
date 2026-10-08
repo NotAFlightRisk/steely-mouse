@@ -15,7 +15,6 @@ env:
   PYTHON_VERSION: '3.13'
 
 jobs:
-  # Work out what kind of files changed, so unrelated jobs can sit this one out.
   changes:
     name: 🔍 Detect Changes
     timeout-minutes: 5
@@ -96,7 +95,6 @@ jobs:
       - name: Check formatting
         run: ruff format --check --diff .
 
-  # The floor is 3.10, so every version from there up has to stay green.
   test:
     name: ${{ matrix.emoji }} Python ${{ matrix.python }}
     needs: changes
@@ -155,7 +153,6 @@ jobs:
           /tmp/check/bin/pip install dist/*.whl
           /tmp/check/bin/rivalcfg-gui --version
 
-  # The release ships frozen binaries, so catch PyInstaller breakage on the PR.
   binary:
     name: 🧊 Frozen Binary
     needs: changes
@@ -212,7 +209,6 @@ jobs:
       - name: Run the built binary
         run: ./result/bin/rivalcfg-gui --version
 
-  # Build the image and prove it actually serves, rather than just starts.
   docker:
     name: 🐳 Docker
     needs: changes
@@ -276,7 +272,6 @@ jobs:
     name: 🔑 Secret Scan
     timeout-minutes: 15
     runs-on: ubuntu-latest
-    # gitleaks reads the PR's commits to work out what to scan
     permissions:
       contents: read
       pull-requests: read
@@ -292,7 +287,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
 
-  # The one check worth requiring on main, since everything above opts out by path.
   gate:
     name: ✅ CI
     needs: [lint, format, test, package, binary, nix, docker, actions, secrets]
