@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS build
+FROM python:3.15-slim AS build
 
 # wheels cover the common arches, the toolchain is there for the ones they don't
 RUN apt-get update \
@@ -17,7 +17,7 @@ RUN pip install . \
  && rivalcfg --print-udev > /udev/99-steelseries-rival.rules
 
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 ARG VERSION=dev
 ARG REVISION=unknown
