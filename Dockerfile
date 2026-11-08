@@ -6,14 +6,14 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PATH="/venv/bin:$PATH"
-RUN python -m venv /venv
+RUN python -m venv --without-pip /venv
 
 ARG VERSION=0.0.0
 WORKDIR /src
 COPY pyproject.toml LICENSE ./
 COPY .github/README.md ./.github/
 COPY rivalcfg_gui ./rivalcfg_gui
-RUN SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip install . \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip --python /venv/bin/python install . \
  && mkdir /udev \
  && rivalcfg --print-udev > /udev/99-steelseries-rival.rules
 
@@ -33,8 +33,10 @@ LABEL org.opencontainers.image.title="steely-mouse" \
       org.opencontainers.image.created="${CREATED}"
 
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends libudev1 libusb-1.0-0 \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall -y pip
 
 COPY --from=build /venv /venv
 COPY --from=build /udev /udev
