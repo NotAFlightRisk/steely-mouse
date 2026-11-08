@@ -32,7 +32,7 @@ There's nothing hardcoded per mouse. The controls are drawn from each device's r
 ## Install
 
 > [!NOTE]
-> On Linux, the mouse belongs to root until udev rules are installed. `sudo rivalcfg --update-udev` sorts it, once (NixOS is different, see below). macOS and Windows need no setup.
+> On Linux, the mouse belongs to root until its udev rules are installed. If they're missing, the app tells you and gives you the exact `sudo ... --update-udev` command to run, once (NixOS is different, see below). macOS and Windows need no setup.
 
 ### Download
 
@@ -65,13 +65,12 @@ programs.rivalcfg-gui.enable = true;
 users.users.<your-username>.extraGroups = [ "input" ];
 ```
 
-That installs the app and the udev rules together. Rebuild, then log out and back in for the group change to apply. `rivalcfg --update-udev` won't work here, as `/etc/udev/rules.d` is read only.
+That installs the app and the udev rules together. Rebuild, then log out and back in for the group change to apply. `--update-udev` won't work here, as `/etc/udev/rules.d` is read only.
 
 ### pip
 
 ```bash
 pipx install git+https://github.com/NotAFlightRisk/steely-mouse
-sudo rivalcfg --update-udev
 rivalcfg-gui
 ```
 
@@ -132,6 +131,7 @@ No mouse to hand? `rivalcfg-gui --demo` runs against a fake one and touches no h
 | `--port` | `RIVALCFG_GUI_PORT` | `8777` | Port to listen on |
 | `--log-level` | `RIVALCFG_GUI_LOG_LEVEL` | `info` | `debug` adds request logs and tracebacks |
 | `--no-browser` | | off | Don't open a browser on start |
+| `--update-udev` | | | Install the Linux udev rules and exit (needs `sudo`) |
 | `--demo [VID:PID]` | | off | Fake device, touches no hardware |
 
 Flags win over the environment, which wins over the defaults. Anyone who can reach the port can retune your mouse, so keep it on loopback unless you really mean it.

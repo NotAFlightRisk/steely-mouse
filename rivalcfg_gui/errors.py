@@ -1,11 +1,11 @@
 """Turns library and OS failures into something a person can act on."""
 
 import os
+import shlex
 import sys
 from glob import glob
 
 VENDOR = 0x1038
-UDEV_FIX = "sudo rivalcfg --update-udev"
 NIXOS_FIX = "services.udev.packages = [ pkgs.rivalcfg ];"
 
 
@@ -74,12 +74,19 @@ def locked_node():
     return None
 
 
+def udev_fix():
+    """Our own --update-udev, spelled out in full so sudo can find it."""
+    frozen = getattr(sys, "frozen", False)
+    command = [sys.executable] if frozen else [sys.executable, "-m", "rivalcfg_gui"]
+    return shlex.join(["sudo", *command, "--update-udev"])
+
+
 def udev_advice():
     """How to install the rules here. NixOS keeps /etc/udev/rules.d read only."""
     if os.path.exists("/etc/NIXOS"):
         return NIXOS_FIX, "Add this to your NixOS config, then rebuild and replug."
     if sys.platform.startswith("linux"):
-        return UDEV_FIX, "Run this once, then unplug and replug the mouse."
+        return udev_fix(), "Run this once, then unplug and replug the mouse."
     return "", ""
 
 
