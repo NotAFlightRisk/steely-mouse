@@ -1,39 +1,40 @@
-FROM python:3.13-slim AS build
+FROM python:3.15-slim AS build
 
-# wheels cover the common arches, the toolchain is there for the ones they don't
+# hidapi only ships wheels for some pythons, so keep what it needs to build from source
 RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc libhidapi-dev libudev-dev \
+ && apt-get install -y --no-install-recommends gcc libc6-dev pkg-config libudev-dev libusb-1.0-0-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PATH="/venv/bin:$PATH"
 RUN python -m venv /venv
 
+ARG VERSION=0.0.0.dev0
 WORKDIR /src
 COPY pyproject.toml LICENSE ./
 COPY .github/README.md ./.github/
 COPY rivalcfg_gui ./rivalcfg_gui
-RUN pip install . \
+RUN sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" rivalcfg_gui/__init__.py \
+ && pip install . \
  && mkdir /udev \
  && rivalcfg --print-udev > /udev/99-steelseries-rival.rules
 
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 
-ARG VERSION=dev
+ARG VERSION=0.0.0.dev0
 ARG REVISION=unknown
 ARG CREATED=unknown
 
-LABEL org.opencontainers.image.title="rivalcfg-gui" \
+LABEL org.opencontainers.image.title="steely-mouse" \
       org.opencontainers.image.description="A web GUI for configuring SteelSeries mice" \
-      org.opencontainers.image.source="https://github.com/Lissy93/steely-mouse" \
+      org.opencontainers.image.source="https://github.com/NotAFlightRisk/steely-mouse" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
 
-# hidapi reaches the mouse through hidraw, so its shared libs have to be here
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libhidapi-hidraw0 libhidapi-libusb0 \
+ && apt-get install -y --no-install-recommends libusb-1.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /venv /venv
