@@ -1,25 +1,19 @@
-# Pushes the release artifacts to PyPI once a draft release is published.
-#
-# Uses PyPI trusted publishing, so there's no token to keep. Until that's set up
-# on the PyPI side this fails softly and says so in the summary.
 name: 📡 Publish
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing git tag to publish (e.g. 1.2.0)'
-        required: true
+        description: Released tag to push to PyPI
         type: string
-
-concurrency:
-  group: publish-${{ inputs.tag || github.ref_name }}
-  cancel-in-progress: false
+        required: true
 
 permissions:
   contents: read
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
 
 jobs:
   pypi:
@@ -31,45 +25,28 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Checkout the tag
-        uses: actions/checkout@v7
-        with:
-          ref: refs/tags/${{ inputs.tag || github.event.release.tag_name }}
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
-      - name: Build the distributions
-        run: |
-          pip install build twine
-          python -m build
-          twine check --strict dist/*
-
+      - name: Fetch the release's distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release download "$TAG" --pattern '*.whl' --pattern '*.tar.gz' --dir dist
       - name: Upload to PyPI
         id: upload
         continue-on-error: true
-        uses: pypa/gh-action-pypi-publish@v1.14.2
+        uses: pypa/gh-action-pypi-publish@v1.14.3
         with:
           skip-existing: true
-
-      - name: Job summary
-        if: always()
+      - name: Summary
         env:
           OUTCOME: ${{ steps.upload.outcome }}
-          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          TAG: ${{ inputs.tag }}
         run: |
-          {
-            echo "## Publish ${TAG}"
-            echo ""
-            if [ "$OUTCOME" = "success" ]; then
-              echo "✅ On PyPI: https://pypi.org/project/rivalcfg-gui/${TAG}/"
-            else
-              echo "⚠️ PyPI upload didn't go through."
-              echo ""
-              echo "If this is the first run, add a trusted publisher on PyPI for"
-              echo "\`${GITHUB_REPOSITORY}\`, workflow \`publish.yml\`, environment \`pypi\`."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" = success ]; then
+            echo "### ✅ [On PyPI](https://pypi.org/project/rivalcfg-gui/$TAG/)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ⚠️ PyPI didn't take it"
+              echo "Needs a trusted publisher on PyPI for \`$GITHUB_REPOSITORY\`, workflow \`publish.yml\`, environment \`pypi\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
