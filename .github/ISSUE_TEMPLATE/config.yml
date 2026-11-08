@@ -7,7 +7,7 @@ contact_links:
 
   - name: 📖 Documentation
     url: https://github.com/NotAFlightRisk/steely-mouse#readme
-    about: Install, configuration and troubleshooting docs. Worth checking before filing.
+    about: Install and configuration docs. Worth checking before filing.
 
   - name: 🙋 Support & Troubleshooting
     url: https://github.com/NotAFlightRisk/steely-mouse/blob/main/.github/SUPPORT.md
