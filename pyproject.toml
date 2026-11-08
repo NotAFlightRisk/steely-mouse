@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,13 +16,14 @@ dependencies = ["flask>=3.0", "rivalcfg>=4.15"]
 rivalcfg-gui = "rivalcfg_gui.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/Lissy93/steely-mouse"
+Homepage = "https://github.com/NotAFlightRisk/steely-mouse"
 
 [tool.setuptools]
 packages = ["rivalcfg_gui"]
 
-[tool.setuptools.dynamic]
-version = { attr = "rivalcfg_gui.__version__" }
+[tool.setuptools_scm]
+version_file = "rivalcfg_gui/_version.py"
+fallback_version = "0.0.0"
 
 [tool.setuptools.package-data]
 rivalcfg_gui = ["static/*", "templates/*"]

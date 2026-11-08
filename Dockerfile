@@ -8,20 +8,19 @@ RUN apt-get update \
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PATH="/venv/bin:$PATH"
 RUN python -m venv /venv
 
-ARG VERSION=0.0.0.dev0
+ARG VERSION=0.0.0
 WORKDIR /src
 COPY pyproject.toml LICENSE ./
 COPY .github/README.md ./.github/
 COPY rivalcfg_gui ./rivalcfg_gui
-RUN sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" rivalcfg_gui/__init__.py \
- && pip install . \
+RUN SETUPTOOLS_SCM_PRETEND_VERSION="${VERSION}" pip install . \
  && mkdir /udev \
  && rivalcfg --print-udev > /udev/99-steelseries-rival.rules
 
 
 FROM python:3.15-slim
 
-ARG VERSION=0.0.0.dev0
+ARG VERSION=0.0.0
 ARG REVISION=unknown
 ARG CREATED=unknown
 
