@@ -5,9 +5,7 @@ from rivalcfg.handlers.buttons import layout_multimedia, layout_qwerty
 from rivalcfg.handlers.rgbgradient import is_rgbgradient
 from rivalcfg.helpers import parse_param_string
 
-# rivalcfg value_type -> the control we draw for it.
-# Anything missing falls back to a text box that takes the same syntax the CLI
-# does, so an odd setting on a mouse we can't test degrades instead of vanishing.
+# rivalcfg value_type -> widget, anything we've not met gets a CLI-syntax text box
 CONTROLS = {
     "choice": "select",
     "range": "slider",
@@ -148,8 +146,7 @@ def describe(name, info):
     }
 
     if control == "select":
-        # Choice keys can be ints (polling rates) or strings (lighting modes), and
-        # JSON object keys would stringify them, so keep a list to preserve types.
+        # a list, since JSON object keys would turn int polling rates into strings
         field["options"] = list(info.get("choices", {}))
     elif control == "slider":
         field.update(min=low, max=high, step=step)

@@ -57,8 +57,7 @@ def create_app(device=None):
 
     @app.before_request
     def guard():
-        # This API reconfigures hardware, so it stays strictly local: the Host
-        # check stops DNS rebinding, Origin and the token stop cross-site posts.
+        # Host stops DNS rebinding, Origin and the token stop cross-site posts
         if not is_loopback(hostname(request.host)):
             return fail(
                 "Only loopback requests are allowed.",

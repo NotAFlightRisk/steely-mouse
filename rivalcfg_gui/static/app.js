@@ -290,8 +290,7 @@ function buildColor(field, id) {
   return [toggle, ...pair.nodes];
 }
 
-// These settings take a plain colour or a looping gradient, so the mode switch
-// picks which, and the preview sweep shows the cycle you've dialled in.
+// a plain colour or a looping gradient, with a sweep previewing the cycle
 function buildGradient(field, id) {
   const start = values[field.name] ?? field.default ?? {};
   const seed = field.default?.stops?.length ? field.default.stops : [{ pos: 0, color: "#ffffff" }];
@@ -850,7 +849,9 @@ function wireActions() {
   const reset = $("reset");
   const label = reset.querySelector("span");
   let armed = false;
+  let timer;
   const disarm = () => {
+    clearTimeout(timer);
     armed = false;
     reset.classList.remove("btn--danger");
     label.textContent = "Reset defaults";
@@ -861,7 +862,7 @@ function wireActions() {
       armed = true;
       reset.classList.add("btn--danger");
       label.textContent = "Tap again to confirm";
-      setTimeout(disarm, 4000);
+      timer = setTimeout(disarm, 4000);
       return;
     }
     disarm();
