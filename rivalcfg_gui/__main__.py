@@ -4,8 +4,6 @@ import argparse
 import errno
 import logging
 import os
-import subprocess
-import sys
 import threading
 import webbrowser
 
@@ -54,9 +52,7 @@ def parse_args(argv=None):
         help="default: %(default)s",
     )
     parser.add_argument(
-        "--update-udev",
-        action="store_true",
-        help="install the udev rules so the mouse isn't root only, then exit (Linux, needs sudo)",
+        "--print-udev", action="store_true", help="print the Linux udev rules and exit"
     )
     parser.add_argument("--version", action="version", version=__version__)
     return parser.parse_args(argv)
@@ -71,23 +67,6 @@ def report(state):
         log.info("%s", state["hint"])
     if state.get("fix"):
         log.info("fix it with:  %s", state["fix"])
-
-
-def update_udev():
-    from rivalcfg import udev
-
-    if not sys.platform.startswith("linux"):
-        log.error("udev is a Linux thing, there's nothing to install here")
-        return 2
-    try:
-        udev.write_rules_file()
-        udev.reload_rules()
-        udev.trigger()
-    except (OSError, subprocess.CalledProcessError) as error:
-        log.error("couldn't install the rules (%s), try again with sudo", error)
-        return 1
-    log.info("rules written to %s, now unplug and replug the mouse", udev.RULES_FILE_PATH)
-    return 0
 
 
 def serve(args):
@@ -125,12 +104,17 @@ def serve(args):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.print_udev:
+        from rivalcfg.udev import generate_rules
+
+        print(generate_rules())
+        return 0
     if args.demo:
         os.environ["RIVALCFG_DRY"] = "1"
         os.environ["RIVALCFG_PROFILE"] = args.demo
 
     logs.configure(args.log_level)
-    return update_udev() if args.update_udev else serve(args)
+    return serve(args)
 
 
 if __name__ == "__main__":

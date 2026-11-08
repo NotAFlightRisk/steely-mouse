@@ -2,8 +2,11 @@
 
 import os
 import shlex
+import shutil
 import sys
 from glob import glob
+
+from rivalcfg.udev import RULES_FILE_PATH
 
 VENDOR = 0x1038
 NIXOS_FIX = "services.udev.packages = [ pkgs.rivalcfg ];"
@@ -75,10 +78,14 @@ def locked_node():
 
 
 def udev_fix():
-    """Our own --update-udev, spelled out in full so sudo can find it."""
-    frozen = getattr(sys, "frozen", False)
-    command = [sys.executable] if frozen else [sys.executable, "-m", "rivalcfg_gui"]
-    return shlex.join(["sudo", *command, "--update-udev"])
+    """Print the rules as you and write them as root, so no python runs under sudo."""
+    if getattr(sys, "frozen", False):
+        command = [sys.executable]
+    elif shutil.which("rivalcfg-gui"):
+        command = ["rivalcfg-gui"]
+    else:
+        command = [sys.executable, "-m", "rivalcfg_gui"]
+    return "%s --print-udev | sudo tee %s > /dev/null" % (shlex.join(command), RULES_FILE_PATH)
 
 
 def udev_advice():

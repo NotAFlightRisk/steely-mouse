@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import sys
 
 import pytest
 
@@ -334,24 +333,29 @@ def test_a_failed_open_asks_for_the_udev_rules(monkeypatch):
     assert problem.fix == errors.udev_fix()
 
 
-def test_the_udev_fix_runs_whatever_python_we_are(monkeypatch):
+RULES = "| sudo tee /etc/udev/rules.d/99-steelseries-rival.rules > /dev/null"
+
+
+def test_the_udev_fix_uses_the_command_on_your_path(monkeypatch):
+    monkeypatch.setattr(errors.shutil, "which", lambda name: "/home/me/.local/bin/" + name)
+    assert errors.udev_fix() == "rivalcfg-gui --print-udev " + RULES
+
+
+def test_off_the_path_the_udev_fix_runs_whatever_python_we_are(monkeypatch):
+    monkeypatch.setattr(errors.shutil, "which", lambda name: None)
     monkeypatch.setattr(errors.sys, "executable", "/opt/my env/python")
-    assert errors.udev_fix() == "sudo '/opt/my env/python' -m rivalcfg_gui --update-udev"
+    assert errors.udev_fix() == "'/opt/my env/python' -m rivalcfg_gui --print-udev " + RULES
 
 
 def test_a_frozen_binary_points_the_udev_fix_at_itself(monkeypatch):
     monkeypatch.setattr(errors.sys, "frozen", True, raising=False)
     monkeypatch.setattr(errors.sys, "executable", "/home/me/rivalcfg-gui-1.0.0-linux-x86_64")
-    assert errors.udev_fix() == "sudo /home/me/rivalcfg-gui-1.0.0-linux-x86_64 --update-udev"
+    assert errors.udev_fix().startswith("/home/me/rivalcfg-gui-1.0.0-linux-x86_64 --print-udev |")
 
 
-def test_update_udev_without_root_says_so(monkeypatch):
-    def refuse(*args):
-        raise PermissionError("/etc/udev/rules.d is root only")
-
-    monkeypatch.setattr("rivalcfg.udev.write_rules_file", refuse)
-    monkeypatch.setattr(sys, "platform", "linux")
-    assert main(["--update-udev"]) == 1
+def test_print_udev_prints_rules_for_steelseries_mice(capsys):
+    assert main(["--print-udev"]) == 0
+    assert 'ATTRS{idVendor}=="1038"' in capsys.readouterr().out
 
 
 def test_nixos_gets_the_config_line_not_a_command(monkeypatch):
