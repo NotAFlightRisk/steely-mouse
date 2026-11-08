@@ -1,6 +1,6 @@
 services:
   rivalcfg-gui:
-    image: ghcr.io/notaflightrisk/steely-mouse
+    image: notaflightrisk/steely-mouse
     container_name: rivalcfg-gui
     restart: unless-stopped
     ports:

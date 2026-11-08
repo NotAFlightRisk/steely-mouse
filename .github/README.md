@@ -19,7 +19,7 @@
 
 ## About
 
-Change your mouse's DPI stages, polling rate, lighting (gradients too), button mapping and sleep timers from a browser tab. It runs on your own machine and talks to the mouse over USB through rivalcfg, so it works with any of the 61 models rivalcfg supports.
+Change your mouse's DPI stages, polling rate, lighting (gradients too), button mapping and sleep timers from a browser tab. It runs on your own machine and talks to the mouse over USB through rivalcfg, so it works with any mouse rivalcfg supports.
 
 There's nothing hardcoded per mouse. The controls are drawn from each device's rivalcfg profile, so a newly supported mouse usually just works.
 
@@ -79,7 +79,7 @@ Plain `pip install` or `uv tool install` take the same URL. You'll need Python 3
 ### Docker
 
 ```bash
-docker run --rm -p 127.0.0.1:8777:8777 --device /dev/hidraw0 ghcr.io/notaflightrisk/steely-mouse
+docker run --rm -p 127.0.0.1:8777:8777 --device /dev/hidraw0 notaflightrisk/steely-mouse
 ```
 
 Then open [localhost:8777](http://localhost:8777). The hidraw number moves around between reboots, so check `ls -l /dev/hidraw*` first. There's a [`docker/compose.yml`](https://github.com/NotAFlightRisk/steely-mouse/blob/main/docker/compose.yml) if you'd rather not retype that every time.
@@ -87,7 +87,7 @@ Then open [localhost:8777](http://localhost:8777). The hidraw number moves aroun
 The image carries the udev rules too, so you can install them without putting rivalcfg on the host:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/notaflightrisk/steely-mouse \
+docker run --rm --entrypoint cat notaflightrisk/steely-mouse \
   /udev/99-steelseries-rival.rules | sudo tee /etc/udev/rules.d/99-steelseries-rival.rules
 ```
 
