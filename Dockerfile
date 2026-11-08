@@ -33,7 +33,7 @@ LABEL org.opencontainers.image.title="steely-mouse" \
       org.opencontainers.image.created="${CREATED}"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libusb-1.0-0 \
+ && apt-get install -y --no-install-recommends libudev1 libusb-1.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /venv /venv

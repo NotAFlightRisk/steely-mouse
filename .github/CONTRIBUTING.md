@@ -43,7 +43,7 @@ Don't worry about getting it perfect first time, we're happy to help get it over
 
 ### Commit messages
 
-We use [Conventional Commits](https://www.conventionalcommits.org/), and the release notes are generated from them, so it does matter:
+We use [Conventional Commits](https://www.conventionalcommits.org/), and the type in your PR title decides which section of the release notes it lands in, so it does matter:
 
 ```
 feat: add support for custom timeouts
